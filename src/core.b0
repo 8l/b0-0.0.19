@@ -1,0 +1,5534 @@
+proc process_int_operation(i){
+	v_base = 0;
+	v_isStruc = 0;
+	v_offset = 0;
+	v_offset_type = 0;
+	v_size = 0;
+	v_index = 0;
+	v_target = 0;
+	v_global = 0;
+	v_reg = 0;
+
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12, r13, r14, r15;
+	r15 = code;
+	r14 = &token_stack;
+	r13 = token;
+	r12 = i;
+	r11 = DEBUG;
+	r1 = [r14+r13*8];
+	r2 = TOKEN_ARRAY_START;
+
+	//if ( token_stack[token] == TOKEN_ARRAY_START) {
+	if(r1 == r2){
+		//Process global memory reference;
+		//fprintf(code, "\tmov [");
+		echo_string(r15, '\tmov [');
+		//token++;	//Increase token pointer;
+		r13 = r13 + 1;
+		token = r13;
+		//Global_Pointer(i);
+		Global_Pointer(r12);
+		//TokenIs(TOKEN_ARRAY_END);
+		TokenIs(TOKEN_ARRAY_END);
+		//fprintf(code, "], ");
+		echo_string(r15, '], ');
+		//token++;
+		r13 = token;
+		r13 = r13 + 1;
+		token = r13;
+		//TokenIs(TOKEN_EQUATE);
+		TokenIs(TOKEN_EQUATE);
+		//token++;
+		r13 = token;
+		r13 = r13 + 1;
+		token = r13;
+		r1 = [r14+r13*8];
+		r2 = TOKEN_OFFSET;
+		r0 = 0;
+		if(r1 < r2) { r0 = 1; }
+		r2 = TOKEN_MINUS;
+		if(r1 == r2) { r0 = 1; }
+		//if ((token_stack[token] < TOKEN_OFFSET)||(token_stack[token]==TOKEN_MINUS)) {
+		if(r0){
+			//fprintf(code, "dword ");
+			echo_string(r15, 'dword ');
+			//if(token_stack[token] == TOKEN_MINUS){
+				//fprintf(code, "-");
+				//token++;
+			//}
+			if(r1 == r2){
+				echo_string(r15, '-');
+				r13 = r13 + 1;
+				token = r13;
+			}
+			//outputNumber(i, NUM_INTEGER);
+			outputNumber(r12, NUM_INTEGER, r15);
+			//fprintf(code, "\n");
+			echo_string(r15, '\n');
+		//} else {
+		} else {	
+			//isHash(token_stack[token]);
+			isHash(r1);
+			//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & (TYPE_REG+TYPE_REG_SHORT) ) > 0) {
+				//fprintf(code, "%s\n", hash_table[token_stack[token]-HASH_OFFSET].token);
+			//} else {
+				//abort_b0("Integer Register Expected");
+			//}
+			r1 = r1 - HASH_OFFSET;
+			r2 = hash_table[r1].token_type;
+			r2 = r2 && TYPE_REG+TYPE_REG_SHORT;
+			if(r2){
+				r2 = &hash_table[r1].token;
+				echo_string(r15, r2);
+				echo_string(r15, '\n');
+			} else {
+				abort_b0('Integer Register Expected');
+			}
+			//token++;
+			r13 = token;
+			r13 = r13 + 1;
+			token = r13;
+		}
+		//atStackEnd(i);
+		atStackEnd(r12);
+	//} else {
+	} else {
+		//we must have a register, function, or label
+		//if (token_stack[token] == TOKEN_ARRAY_END)
+			//abort_b0("Unexpected token ']'");
+		r2 = TOKEN_ARRAY_END;
+		if(r1 == r2){
+			abort_b0('Unexpected token \']\'');
+		}
+		r2 = r1 - HASH_OFFSET;
+		r3 = hash_table[r2].token_type;
+		r4 = r3 && 0fh;
+		//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & 0xf) > 0) {
+		if(r4){
+			// We have a label;
+			//if(DEBUG)
+				//printf("Processing line with variable destination\n");
+			if(r11){
+				echo_string(STDOUT, 'Processing line with variable destination\n');
+			}
+			// Let's first find if we are handling a structure before continuing.
+			//BuildLabelInfo(i);
+			BuildLabelInfo(r12);
+			//TokenIs(TOKEN_EQUATE);
+			TokenIs(TOKEN_EQUATE);
+			//token++;
+			r13 = token;
+			r13 = r13 + 1;
+			token = r13;
+			//v_target = token;
+			v_target = r13;
+			//if (token_stack[token] < TOKEN_OFFSET) {
+				//if (DEBUG)
+					//printf("Immediate being stored into memory location");
+				
+			//} else {
+				//isHash(token_stack[token]);
+				//TokenIsLabelType(TYPE_REG);
+			//}
+			r2 = [r14+r13*8];
+			r1 = TOKEN_OFFSET;
+			if(r2 < r1){
+				if(r11){
+					echo_string(STDOUT, 'Immediate being stored into memory location\n');
+				}
+			} else {
+				isHash(r2);
+				TokenIsLabelType(TYPE_REG);
+			}
+			
+			// Now we have all our information, so let build the instruction...
+			//if(DEBUG){
+				//DisplayLabelInfo();	
+			//}
+			if(r11){
+				DisplayLabelInfo();	
+			}
+			//if ((state == '3') || (state == '6') || (state == '8'))
+				//abort_b0("Unable to store an integer in a floating point variable");
+			r0 = state;
+			r1 = 38h;
+			if (r0 < r1){
+				r1 = CHAR_SPACE;
+				if(r0 != r1){
+					abort_b0('Unable to store an integer in a floating point variable');
+				}
+			}
+			r0 = v_isStruc;
+			r1 = 1;
+			//if (v_isStruc == 1) {
+			if (r0 == r1){
+				//Let's handle the structure def intelligently, (what I'm doing below isn't intelligent).
+				// What we do, is calculate the offset for any struc operation, and then do a
+				// mov [r6|r14|r15], reg|immediate operation.
+				//Set_v_reg();	//v_reg is the register we are going to use.
+				Set_v_reg();
+				//fprintf(code, "\tpush %s\n", hash_table[v_reg].token);
+				r0 = v_reg;
+				r1 = &hash_table[r0].token;
+				echo_string(r15, '\tpush ');
+				echo_string(r15, r1);
+				echo_string(r15, '\n');
+				
+				//Calculate_label_address(i);
+				Calculate_label_address(r12);
+				
+				//Now we are ready to store the value...
+				//switch(state){
+					//case 'b' : fprintf(code, "\tmov byte [%s], ", hash_table[v_reg].token); break;
+					//case 'w' : fprintf(code, "\tmov word [%s], ", hash_table[v_reg].token); break;
+					//#ifndef i386
+					//case 'd' : fprintf(code, "\tmov dword [%s], ", hash_table[v_reg].token); break;
+					//default  : fprintf(code, "\tmov qword [%s], ", hash_table[v_reg].token); break;
+					//#else
+					//default  : fprintf(code, "\tmov dword [%s], ", hash_table[v_reg].token); break;
+					//#endif
+				//}
+				r5 = state;
+				r3 = CHAR_b; //b
+				if (r5 == r3){
+					echo_string(r15, '\tmov byte [');
+					echo_string(r15, r1);
+					echo_string(r15, '], ');
+				} else {
+					r3 = CHAR_w; // w
+					if(r5 == r3){
+						echo_string(r15, '\tmov word [');
+						echo_string(r15, r1);
+						echo_string(r15, '], ');
+					} else {
+						#ifndef i386;
+						r3 = CHAR_d;
+						#else;
+						r3 = CHAR_SPACE;
+						#endif;
+						if(r5 == r3){
+							echo_string(r15, '\tmov dword [');
+							echo_string(r15, r1);
+							echo_string(r15, '], ');
+						} else {
+							echo_string(r15, '\tmov qword [');
+							echo_string(r15, r1);
+							echo_string(r15, '], ');
+						}
+					}
+				}
+				//token = v_target;
+				r13 = v_target;
+				token = r13;
+				r2 = [r14+r13*8];
+				r1 = TOKEN_OFFSET;
+				//if (token_stack[token] < TOKEN_OFFSET) {
+					// We have an immediate load.
+					//outputNumber(i, NUM_INTEGER);
+					//fprintf(code, "\n");
+					//atStackEnd(i);
+				//} else {
+					// We should have a register
+					//TokenIsLabelType(TYPE_REG);
+					//fprintf(code, "%s%c\n", hash_table[token_stack[token]-HASH_OFFSET].token, state);
+					//token++;
+					//atStackEnd(i);
+				//}
+				if(r2 < r1){
+					outputNumber(r12, NUM_INTEGER, r15);
+					echo_string(r15, '\n');
+					atStackEnd(r12);
+				} else {
+					TokenIsLabelType(TYPE_REG);
+					r2 = r2 - HASH_OFFSET;
+					r1 = &hash_table[r2].token;
+					echo_string(r15, r1);
+					echo_character(r15, r5);
+					echo_string(r15, '\n');
+					r13 = token;
+					r13 = r13 + 1;
+					token = r13;
+					atStackEnd(r12);
+				}
+				//fprintf(code, "\tpop %s\n", hash_table[v_reg].token);
+				r1 = v_reg;
+				r2 = &hash_table[r1].token;
+				echo_string(r15, '\tpop ');
+				echo_string(r15, r2);
+				echo_string(r15, '\n');
+				
+			//} else {
+			} else {
+				// Non-structure definition, so this should be quick.
+				
+				//switch(state){
+				//	case 'b' : fprintf(code, "\tmov byte "); break;
+					//case 'w' : fprintf(code, "\tmov word "); break;
+					//#ifndef i386
+					//case 'd' : fprintf(code, "\tmov dword "); break;
+					//default  : fprintf(code, "\tmov qword "); break;
+					//#else
+					//default  : fprintf(code, "\tmov dword "); break;
+					//#endif
+				//}
+				r5 = state;
+				r3 = CHAR_b; //b
+				if (r5 == r3){
+					echo_string(r15, '\tmov byte ');
+				} else {
+					r3 = CHAR_w; // w
+					if(r5 == r3){
+						echo_string(r15, '\tmov word ');
+					} else {
+						#ifndef i386;
+						r3 = CHAR_d;
+						#else;
+						r3 = CHAR_SPACE;
+						#endif;
+						if(r5 == r3){
+							echo_string(r15, '\tmov dword ');
+						} else {
+							echo_string(r15, '\tmov qword ');
+						}
+					}
+				}				
+				//Calculate_NSLabel_address(i);
+				Calculate_NSLabel_address(r12);
+				
+				//fprintf(code, ", ");
+				echo_string(r15, ', ');
+				
+				//token = v_target;
+				r13 = v_target;
+				token = r13;
+				r2 = [r14+r13*8];
+				r1 = TOKEN_OFFSET;
+				//if (token_stack[token] < TOKEN_OFFSET) {
+					// We have an immediate load.
+					//outputNumber(i, NUM_INTEGER);
+					//fprintf(code, "\n");
+					//atStackEnd(i);
+				//} else {
+					// We should have a register
+					//TokenIsLabelType(TYPE_REG);
+					//fprintf(code, "%s%c\n", hash_table[token_stack[token]-HASH_OFFSET].token, state);
+					//token++;
+					//atStackEnd(i);
+				//}
+				if(r2 < r1){
+					outputNumber(r12, NUM_INTEGER, r15);
+					echo_string(r15, '\n');
+					atStackEnd(r12);
+				} else {
+					TokenIsLabelType(TYPE_REG);
+					r2 = r2 - HASH_OFFSET;
+					r1 = &hash_table[r2].token;
+					echo_string(r15, r1);
+					echo_character(r15, r5);
+					echo_string(r15, '\n');
+					r13 = token;
+					r13 = r13 + 1;
+					token = r13;
+					atStackEnd(r12);
+				}
+			//}
+			}
+			//token = i;
+			r13 = r12;
+			token = r13;
+		//} else {
+		} else {
+			r1 = TYPE_REG;
+			//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_REG) {
+			if(r3 == r1){
+				//if(DEBUG)
+					//printf("Processing line with register destination\n");
+				if(r11) { 
+					echo_string(STDOUT, 'Processing line with register destination\n');
+				}
+				//target = token_stack[token]-HASH_OFFSET; //Store hash of target.
+				r2 = [r14+r13*8];
+				r2 = r2 - HASH_OFFSET;
+				target = r2;
+				//token++;
+				r13 = r13 + 1;
+				token = r13;
+				//TokenIs(TOKEN_EQUATE);
+				TokenIs(TOKEN_EQUATE);
+				//token++; // Let's skip ahead for a second.
+				r13 = token;
+				r13 = r13 + 1;
+				token = r13;
+				r4 = 0;
+				r2 = [r14+r13*8];
+				r3 = TOKEN_STRING;
+				if (r2 == r3){
+					r4 = 1;
+				}
+				r3 = TOKEN_POINTER;
+				if(r2 == r3){
+					r4 = 1;
+				}
+				if(r4){
+				//if ((token_stack[token] == TOKEN_POINTER)||(token_stack[token] == TOKEN_STRING)) {
+					// We are dealing with a pointer to either a string or label
+					//if (token_stack[token] == TOKEN_POINTER) token++;
+					if(r2 == r3){
+						r13 = r13 + 1;
+						token = r13;
+						r2 = [r14+r13*8];
+					}
+					// Advance if token is a pointer, otherwise just wait.
+					r3 = TOKEN_ARRAY_START;
+					//if (token_stack[token] == TOKEN_ARRAY_START) {
+					if(r2 == r3){
+						//fprintf(code, "\tlea %s, [", hash_table[target].token);
+						echo_string(r15, '\tlea ');
+						r0 = target;
+						r0 = &hash_table[r0].token;
+						echo_string(r15, r0);
+						echo_string(r15, ', [');
+						//token++;	//Increase token pointer;
+						r13 = token;
+						r13 = r13 + 1;
+						token = r13;
+						//Global_Pointer(i);
+						Global_Pointer(r12);
+						//TokenIs(TOKEN_ARRAY_END);
+						TokenIs(TOKEN_ARRAY_END);
+						//fprintf(code, "]\n");
+						echo_string(r15, ']\n');
+						//token++;
+						r13 = token;
+						r13 = r13 + 1;
+						token = r13;
+						//atStackEnd(i);
+						atStackEnd(r12);
+					} else {
+						r3 = TOKEN_STRING;
+						//if (token_stack[token] == TOKEN_STRING) {
+						if(r2 == r3){
+							//outputDynamicString(i);
+							//atStackEnd(i);
+							outputDynamicString(r12);
+							atStackEnd(r12);
+						//} else {
+						} else {
+							// We are dealing with a label, but lets first check
+							//isHash(token_stack[token]);
+							isHash(r2);
+							r3 = r2 - HASH_OFFSET;
+							r3 = hash_table[r3].token_type;
+							r4 = 0;
+							if (r3 == r4){
+								r4 = 1;
+							}
+							r1 = TYPE_PROC;
+							if(r3 == r1){ r4 = 1; }
+							r1 = TYPE_EPROC;
+							if(r3 == r1){ r4 = 1; }
+							if(r4){
+							//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_PROC)||
+								//(hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_EPROC)||
+								//(hash_table[token_stack[token]-HASH_OFFSET].token_type == 0)){
+								//Process pointer to PROC!
+								//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_EPROC) {
+								if (r3 == r1){
+									//fprintf(code, "\tmov %s, %s\n", hash_table[target].token, hash_table[token_stack[token]-HASH_OFFSET].token);
+									r1 = target;
+									r1 = &hash_table[r1].token;
+									r3 = r2 - HASH_OFFSET;
+									r3 = &hash_table[r3].token;
+									echo_string(r15, '\tmov ');
+									echo_string(r15, r1);
+									echo_string(r15, ', ');
+									echo_string(r15, r3);
+									echo_string(r15, '\n');
+								//} else {
+								} else {
+									//fprintf(code, "\tmov %s, _B0_%s\n", hash_table[target].token, hash_table[token_stack[token]-HASH_OFFSET].token);								
+									r1 = target;
+									r1 = &hash_table[r1].token;
+									r3 = r2 - HASH_OFFSET;
+									r3 = &hash_table[r3].token;
+									echo_string(r15, '\tmov ');
+									echo_string(r15, r1);
+									echo_string(r15, ', _B0_');
+									echo_string(r15, r3);
+									echo_string(r15, '\n');
+								//};
+								}
+								//token++;
+								r13 = token;
+								r13 = r13 + 1;
+								token = r13;
+								//TokenIs(TOKEN_PARA_START);
+								TokenIs(TOKEN_PARA_START);
+								//token++; // Let's skip ahead for a second.
+								r13 = token;
+								r13 = r13 + 1;
+								token = r13;
+								//TokenIs(TOKEN_PARA_END);
+								TokenIs(TOKEN_PARA_END);
+								//token++;
+								r13 = token;
+								r13 = r13 + 1;
+								token = r13;
+								//atStackEnd(i);
+								atStackEnd(r12);
+							//} else {
+							} else {
+								//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & 0xf) == 0) abort_b0("Expected Data Label");
+								r3 = r3 && 0fh;
+								r0 = 0;
+								if(r3 == r0){
+									abort_b0('Expected Data Label');
+								}
+								// We definitely have a label.
+								//BuildLabelInfo(i);
+								BuildLabelInfo(r12);
+								// we use target here instead of v_target!
+								//v_target = 0;
+								v_target = 0;
+								//if(DEBUG){
+									//DisplayLabelInfo();	
+								//}
+								if(r11){
+									DisplayLabelInfo();	
+								}
+								//atStackEnd(i);
+								atStackEnd(r12);
+								r0 = 1;
+								r1 = v_isStruc;
+								if(r1 == r0){
+								//if (v_isStruc == 1) {
+									// What we do, is calculate the offset for any struc operation, and then do a
+									// mov target, r6|r14|r15 operation.
+	
+									//Set_v_reg();	//v_reg is the register we are going to use.
+									Set_v_reg();
+	
+									//fprintf(code, "\tpush %s\n", hash_table[v_reg].token);
+									r1 = v_reg;
+									r2 = &hash_table[r1].token;
+									echo_string(r15, '\tpush ');
+									echo_string(r15, r2);
+									echo_string(r15, '\n');
+					
+									//Calculate_label_address(i);
+									Calculate_label_address(r12);
+									
+									//fprintf (code, "\tmov %s, %s\n\tpop %s\n", hash_table[target].token, hash_table[v_reg].token, hash_table[v_reg].token);
+									r1 = target;
+									r1 = &hash_table[r1].token;
+									echo_string(r15, '\tmov ');
+									echo_string(r15, r1);
+									echo_string(r15, ', ');
+									echo_string(r15, r2);
+									echo_string(r15, '\n\tpop ');
+									echo_string(r15, r2);
+									echo_string(r15, '\n');
+									
+								//} else {
+								} else {
+									// We have a standard variable.
+									r5 = state;
+									//if(state != '8') //We handle f80 differently
+										//fprintf(code, "\tlea %s, ", hash_table[target].token);
+									r0 = 38h;
+									if(r5 != r0){
+										r1 = target;
+										r1 = &hash_table[r1].token;
+										echo_string(r15, '\tlea ');
+										echo_string(r15, r1);
+										echo_string(r15, ', ');
+									}
+									//Calculate_NSLabel_address(i);
+									Calculate_NSLabel_address(r12);
+									//fprintf(code, "\n");
+									echo_string(r15, '\n');
+								//}
+								}
+							//}
+							}
+						//}
+						}
+					}
+				//} else {
+				} else {
+					// We have a reg, label, immediate, or proc. (pointers have already been dealth with).
+					r3 = TOKEN_OFFSET;
+					r4 = 0;
+					if (r2 < r3) { r4 = 1; }
+					r3 = TOKEN_MINUS;
+					if(r2 == r3) { r4 = 1; }
+					if (r4){
+					//if ((token_stack[token] < TOKEN_OFFSET) || (token_stack[token] == TOKEN_MINUS)) {
+						// We have an immediate load
+						//fprintf(code, "\tmov %s, ", hash_table[target].token);
+						r5 = target;
+						r5 = &hash_table[r5].token;
+						echo_string(r15, '\tmov ');
+						echo_string(r15, r5);
+						echo_string(r15, ', ');
+						//if (token_stack[token] == TOKEN_MINUS) {
+							//token++;
+							//fprintf(code, "-");
+						//}
+						if(r2 == r3){
+							r13 = token;
+							r13 = r13 + 1;
+							token = r13;
+							echo_string(r15, '-');
+						}
+						//outputNumber(i, NUM_INTEGER);
+						outputNumber(r12, NUM_INTEGER, r15);
+						//fprintf(code, "\n");
+						echo_string(r15, '\n');
+						//atStackEnd(i);
+						atStackEnd(r12);
+					//} else {
+					} else {
+						// We have a reg, label or proc
+						r3 = TOKEN_ARRAY_START;
+						//if (token_stack[token] == TOKEN_ARRAY_START) {
+						if(r2 == r3){
+							// We have a global load into a register
+							r4 = target;
+							r4 = &hash_table[r4].token;
+							//fprintf(code, "\tmov %s, [", hash_table[target].token);
+							echo_string(r15, '\tmov ');
+							echo_string(r15, r4);
+							echo_string(r15, ', [');
+							//token++;
+							r13 = token;
+							r13 = r13 + 1;
+							token = r13;
+							//Global_Pointer(i);
+							Global_Pointer(r12);
+							//TokenIs(TOKEN_ARRAY_END);
+							TokenIs(TOKEN_ARRAY_END);
+							//fprintf(code, "]\n");
+							echo_string(r15, ']\n');
+							//token++;
+							r13 = token;
+							r13 = r13 + 1;
+							token = r13;
+							//atStackEnd(i);
+							atStackEnd(r12);
+						
+						//} else {
+						} else {
+							// We have a reg, label or proc
+							// At this stage, the next token should be a reg, label or proc.
+							// Anything else is incorrect!
+							//isHash(token_stack[token]);
+							isHash(r2);
+							//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_KEYWORD)
+								//abort_b0("Unexpected Keyword");
+							r3 = r2 - HASH_OFFSET;
+							r3 = hash_table[r3].token_type;
+							r4 = TYPE_KEYWORD;
+							if(r3 == r4){
+								abort_b0('Unexpected Keyword');
+							}
+							// The only thing we should be left with are the regs, labels or procs!
+							//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & 0xf) > 0) {
+							r4 = r3 && 0fh;
+							if(r4){
+								// We have a label
+								//if(DEBUG)
+									//printf("Processing line with register destination with label source\n");
+								if(r11){
+										echo_string(STDOUT, 'Processing line with register destination with label source\n');
+								}
+								//BuildLabelInfo(i);
+								BuildLabelInfo(r12);
+								// we use target here instead of v_target!
+								//v_target = 0;
+								v_target = 0;
+								//if(DEBUG){
+									//DisplayLabelInfo();	
+								//}
+								if(r11){
+									DisplayLabelInfo();
+								}
+								//atStackEnd(i);
+								atStackEnd(r12);
+								//state will hold the size of the transfer..., On m64 state = '', as this is the default size. No override needed.
+								//if ((state == '3') || (state == '6') || (state == '8'))
+									//abort_b0("Unable to load integer register with floating point variable");
+								r0 = state;
+								r1 = 38h;
+								if(r0 <= r1){
+									r1 = CHAR_SPACE;
+									if(r0 != r1){
+										abort_b0('Unable to load integer register with floating point variable');
+									}
+								}
+								r0 = v_isStruc;
+								r1 = 1;
+								//if (v_isStruc == 1) {
+								if(r0 == r1){
+									//Let's handle the structure def intelligently, (what I'm doing below isn't intelligent).
+									// What we do, is calculate the offset for any struc operation, and then do a
+									// mov [r6|r14|r15], reg|immediate operation.
+								
+									//Set_v_reg();	//v_reg is the register we are going to use.
+									Set_v_reg();
+//
+									//fprintf(code, "\tpush %s\n", hash_table[v_reg].token);
+									r0 = v_reg;
+									r1 = &hash_table[r0].token;
+									echo_string(r15, '\tpush ');
+									echo_string(r15, r1);
+									echo_string(r15, '\n');
+									
+				
+									//Calculate_label_address(i);
+									Calculate_label_address(r12);
+									
+									r0 = target;
+									r1 = &hash_table[r0].token;
+									r0 = v_reg;
+									r2 = &hash_table[r0].token;
+									r3 = state;
+									r4 = CHAR_b;
+									//Now we are ready to store the value...
+									//switch(state){
+										//case 'b' : fprintf(code, "\tmovzx %s, byte [%s]\n", hash_table[target].token, hash_table[v_reg].token); break;
+										//case 'w' : fprintf(code, "\tmovzx %s, word [%s]\n", hash_table[target].token, hash_table[v_reg].token); break;
+										//#ifndef i386
+										//case 'd' : fprintf(code, "\tmov %sd, dword [%s]\n", hash_table[target].token, hash_table[v_reg].token); break;
+										//default  : fprintf(code, "\tmov %s, qword [%s]\n", hash_table[target].token, hash_table[v_reg].token); break;
+										//#else
+										//default  : fprintf(code, "\tmov %s, dword [%s]\n", hash_table[target].token, hash_table[v_reg].token); break;
+										//#endif
+									//}
+									if(r3 == r4){
+										echo_string(r15, '\tmovzx ');
+										echo_string(r15, r1);
+										echo_string(r15, ', byte [');
+										echo_string(r15, r2);
+										echo_string(r15, ']\n');
+									} else {
+										r4 = CHAR_w;
+										if(r3 == r4){
+											echo_string(r15, '\tmovzx ');
+											echo_string(r15, r1);
+											echo_string(r15, ', word [');
+											echo_string(r15, r2);
+											echo_string(r15, ']\n');
+										} else {
+											#ifndef i386;
+											r4 = CHAR_d;
+											#else;
+											r4 = CHAR_SPACE;
+											#endif;
+											if(r3 == r4){
+												echo_string(r15, '\tmov ');
+												echo_string(r15, r1);
+												echo_string(r15, 'd, dword [');
+												echo_string(r15, r2);
+												echo_string(r15, ']\n');												
+											} else {
+												echo_string(r15, '\tmov ');
+												echo_string(r15, r1);
+												echo_string(r15, ', qword [');
+												echo_string(r15, r2);
+												echo_string(r15, ']\n');												
+											}
+										}
+									}
+									//token = v_target;
+									r13 = v_target;
+									token = r13;
+									//fprintf(code, "\tpop %s\n", hash_table[v_reg].token);
+									r0 = v_reg;
+									r1 = &hash_table[r0].token;
+									echo_string(r15, '\tpop ');
+									echo_string(r15, r1);
+									echo_string(r15, '\n');
+									
+								//} else {
+								} else {
+									// Non-structure definition, so this should be quick.
+									//switch(state){
+										//case 'b' : fprintf(code, "\tmovzx %s, byte ", hash_table[target].token); break;
+										//case 'w' : fprintf(code, "\tmovzx %s, word ", hash_table[target].token); break;
+										//#ifndef i386
+										//case 'd' : fprintf(code, "\tmov %sd, dword ", hash_table[target].token); break;
+										//default  : fprintf(code, "\tmov %s, qword ", hash_table[target].token); break;
+										//#else
+										//default  : fprintf(code, "\tmov %s, dword ", hash_table[target].token); break;
+										//#endif
+									//}
+									r0 = target;
+									r1 = &hash_table[r0].token;
+									r3 = state;
+									r4 = CHAR_b;
+									if(r3 == r4){
+										echo_string(r15, '\tmovzx ');
+										echo_string(r15, r1);
+										echo_string(r15, ', byte ');
+									} else {
+										r4 = CHAR_w;
+										if(r3 == r4){
+											echo_string(r15, '\tmovzx ');
+											echo_string(r15, r1);
+											echo_string(r15, ', word ');
+										} else {
+											#ifndef i386;
+											r4 = CHAR_d;
+											#else;
+											r4 = CHAR_SPACE;
+											#endif;
+											if(r3 == r4){
+												echo_string(r15, '\tmov ');
+												echo_string(r15, r1);
+												echo_string(r15, 'd, dword ');
+											} else {
+												echo_string(r15, '\tmov ');
+												echo_string(r15, r1);
+												echo_string(r15, ', qword ');
+											}
+										}
+									}
+									
+									//Calculate_NSLabel_address(i);
+									Calculate_NSLabel_address(r12);
+									
+									//fprintf(code, "\n");
+									echo_string(r15, '\n');
+								//}
+								}
+							//} else {
+							} else {
+								//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_REG) {
+								r4 = TYPE_REG;
+								if(r3 == r4){
+									// We have a register!
+									//token++;	// Step forward 1
+									r13 = token;
+									r13 = r13 + 1;
+									token = r13;
+									//if (token != i) {
+									if(r13 != r12){
+										//if ((token_stack[token] != TOKEN_MULTIPLY) &&
+											//(token_stack[token] != TOKEN_DIVIDE) &&
+											//(token_stack[token] != TOKEN_MODULUS) &&
+											//(token_stack[token] != TOKEN_S_MULTIPLY) &&
+											//(token_stack[token] != TOKEN_S_DIVIDE) &&
+											//(token_stack[token] != TOKEN_S_MODULUS)) {
+												//if (target != (token_stack[token-1]-HASH_OFFSET))
+													// Only output if target and first operand are different.
+													//fprintf(code, "\tmov %s, %s\n", hash_table[target].token, hash_table[token_stack[token-1]-HASH_OFFSET].token);
+											//};
+										r13 = token;
+										r2 = [r14+r13*8];
+										r1 = r2 - TOKEN_MULTIPLY;
+										r3 = 5h;
+										if(r1 > r3){
+											r2 = r13 - 1;
+											r2 = [r14+r2*8];
+											r2 = r2 - HASH_OFFSET;
+											r1 = target;
+											if(r1!= r2){
+												r1 = &hash_table[r1].token;
+												r2 = &hash_table[r2].token;
+												echo_string(r15, '\tmov ');
+												echo_string(r15, r1);
+												echo_string(r15, ', ');
+												echo_string(r15, r2);
+												echo_string(r15, '\n');
+											}
+										}
+										//state = token_stack[token];
+										r3 = [r14+r13*8];
+										state = r3;
+										r4 = TOKEN_AND;
+										r1 = target;
+										r1 = &hash_table[r1].token;
+										//switch(state) {
+											//case TOKEN_AND:  // If our operation is a basic AND
+												//fprintf(code, "\tand %s, ", hash_table[target].token);
+												//break;
+										if(r3 == r4){
+											echo_string(r15, '\tand ');
+											echo_string(r15, r1);
+											echo_string(r15, ', ');
+										} else {
+											//case TOKEN_OR:
+												//fprintf(code, "\tor %s, ", hash_table[target].token);
+												//break;
+											r4 = TOKEN_OR;
+											if(r3 == r4){
+												echo_string(r15, '\tor ');
+												echo_string(r15, r1);
+												echo_string(r15, ', ');
+											} else{												
+											//case TOKEN_XOR:
+												//fprintf(code, "\txor %s, ", hash_table[target].token);
+												//break;
+												r4 = TOKEN_XOR;
+												if(r3 == r4){
+													echo_string(r15, '\txor ');
+													echo_string(r15, r1);
+													echo_string(r15, ', ');
+												} else{												
+												
+											//case TOKEN_ADD:
+												//fprintf(code, "\tadd %s, ", hash_table[target].token);
+												//break;
+													r4 = TOKEN_ADD;
+													if(r3 == r4){
+														echo_string(r15, '\tadd ');
+														echo_string(r15, r1);
+														echo_string(r15, ', ');
+													} else{												
+												
+											//case TOKEN_MINUS:
+												//fprintf(code, "\tsub %s, ", hash_table[target].token);
+												//break;
+														r4 = TOKEN_MINUS;
+														if(r3 == r4){
+															echo_string(r15, '\tsub ');
+															echo_string(r15, r1);
+															echo_string(r15, ', ');
+														} else{												
+												
+											//case TOKEN_RSHIFT:
+												//fprintf(code, "\tshr %s, ", hash_table[target].token);
+												//break;
+															r4 = TOKEN_RSHIFT;
+															if(r3 == r4){
+																echo_string(r15, '\tshr ');
+																echo_string(r15, r1);
+																echo_string(r15, ', ');
+															} else{												
+												
+											//case TOKEN_LSHIFT:
+												//fprintf(code, "\tshl %s, ", hash_table[target].token);
+												//break;
+															r4 = TOKEN_LSHIFT;
+															if(r3 == r4){
+																echo_string(r15, '\tshl ');
+																echo_string(r15, r1);
+																echo_string(r15, ', ');
+															} else{												
+
+											//case TOKEN_RROTATE:
+												//fprintf(code, "\tror %s, ", hash_table[target].token);
+												//break;
+															r4 = TOKEN_RROTATE;
+															if(r3 == r4){
+																echo_string(r15, '\tror ');
+																echo_string(r15, r1);
+																echo_string(r15, ', ');
+															} else{												
+												
+											//case TOKEN_LROTATE:
+												//fprintf(code, "\trol %s, ", hash_table[target].token);
+												//break;
+															r4 = TOKEN_LROTATE;
+															if(r3 == r4){
+																echo_string(r15, '\trol ');
+																echo_string(r15, r1);
+																echo_string(r15, ', ');
+															} else{												
+
+											//case TOKEN_MULTIPLY:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Multiply Operations REQUIRE r0 as source");
+												//fprintf(code, "\tmul ");
+												//break;
+															r2 = r13 - 1;
+															r1 = [r14+r2*8];
+															r1 = r1 - HASH_OFFSET;
+															r2 = HASH_r0;
+															r4 = TOKEN_MULTIPLY;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Multiply Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\tmul ');
+															} else {
+
+											//case TOKEN_DIVIDE:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Division Operations REQUIRE r0 as source");
+												//fprintf(code, "\tdiv ");
+												//break;
+															r4 = TOKEN_DIVIDE;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Division Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\tdiv ');
+															} else {
+												
+											//case TOKEN_MODULUS:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Modulus Operations REQUIRE r0 as source");
+												//fprintf(code, "\tdiv ");
+												//break;
+															r4 = TOKEN_MODULUS;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Modulus Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\tdiv ');
+															} else {
+												
+											//case TOKEN_S_MULTIPLY:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Signed Multiply Operations REQUIRE r0 as source");
+												//fprintf(code, "\timul ");
+												//break;
+															r4 = TOKEN_S_MULTIPLY;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Signed Multiply Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\timul ');
+															} else {
+											
+											//case TOKEN_S_DIVIDE:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Signed Division Operations REQUIRE r0 as source");
+												//fprintf(code, "\tidiv ");
+												//break;
+															r4 = TOKEN_S_DIVIDE;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Signed Division Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\tidiv ');
+															} else {
+												
+											//case TOKEN_S_MODULUS:
+												//if ((token_stack[token-1]-HASH_OFFSET) != HASH_r0)
+													//abort_b0("Signed Modulus Operations REQUIRE r0 as source");
+												//fprintf(code, "\tidiv ");
+												//break;
+															r4 = TOKEN_S_MODULUS;
+															if(r3 == r4){
+																if(r1!=r2){
+																	abort_b0('Signed Modulus Operations REQUIRE r0 as source');
+																}
+																echo_string(r15, '\tidiv ');
+															} else {
+
+											//default:
+												//abort_b0("Invalid Construct");
+												//break;
+																abort_b0('Invalid Construct');
+															}
+										}}}}}}}}}}}}}}
+										//}
+										// We have constructed our operand
+										//token++;
+										r13 = token;
+										r13 = r13 + 1;
+										token = r13;
+										// Now lets see what the second operand is...
+										r1 = [r14+r13*8];
+										r4 = 0;
+										r2 = TOKEN_OFFSET;
+										if(r1 < r2){ r4 = 1; }
+										r2 = TOKEN_MINUS;
+										if(r1 == r2) { r4 = 1; }
+										if(r4){
+										//if ((token_stack[token] < TOKEN_OFFSET) || (token_stack[token] == TOKEN_MINUS)) {
+											// Looks like an immediate
+											//if ((state == TOKEN_MULTIPLY) ||
+												//(state == TOKEN_DIVIDE) ||
+												//(state == TOKEN_MODULUS) ||
+												//(state == TOKEN_S_MULTIPLY) ||
+												//(state == TOKEN_S_DIVIDE) ||
+												//(state == TOKEN_S_MODULUS)) {
+													// Mul, and div require a register!
+													//abort_b0("Unexpected immediate value");
+												//}
+												r2 = r3; // r3 is our state;
+												r2 = r2 - TOKEN_MULTIPLY;
+												r4 = 5h;
+												if(r2 <= r4){
+													abort_b0('Unexpected immediate value');
+												}
+											// We have an immediate load
+											r4 = TOKEN_MINUS;
+											if(r1 == r4){
+											//if (token_stack[token] == TOKEN_MINUS) {
+												//if ((state == TOKEN_RSHIFT) ||
+													//(state == TOKEN_LSHIFT) ||
+													////(state == TOKEN_RROTATE) ||
+													//(state == TOKEN_LROTATE)) {
+														// Shifts MUST have a positive!
+														//abort_b0("Shift/Rotate operations require a POSITIVE shift value");
+												//}
+												r2 = r3; // r3 is our state;
+												r2 = r2 - TOKEN_RROTATE;
+												r4 = 3h;
+												if(r2 <= r4){
+													abort_b0('Shift/Rotate operations require a POSITIVE shift value');
+												}
+												//token++;
+												r13 = token;
+												r13 = r13 + 1;
+												token = r13;
+												//fprintf(code, "-");
+												echo_string(r15, '-');
+											//}
+											}
+											//outputNumber(i, NUM_INTEGER);
+											outputNumber(r12, NUM_INTEGER, r15);
+											//fprintf(code, "\n");
+											echo_string(r15, '\n');
+										//} else {
+										} else {
+											// Must be a REG, so lets get rid of the rest;
+											//if (token_stack[token] < HASH_OFFSET)
+												//abort_b0("Expected Token/Label");
+											r4 = HASH_OFFSET;
+											if(r1 < r4){
+												abort_b0('Expected Token/Label');
+											}
+											
+											// Lets see if we have a shift operation, and handle appropriately.
+											//if ((state == TOKEN_RSHIFT) || (state == TOKEN_LSHIFT) ||
+												//(state == TOKEN_RROTATE) || (state == TOKEN_LROTATE)){
+											r3 = state;
+											r2 = r3 - TOKEN_RROTATE;
+											r4 = 3h;
+											if(r2 <= r4){
+												//if (((token_stack[token]-HASH_OFFSET) != HASH_r2) &&
+													//((token_stack[token]-HASH_OFFSET) != HASH_r2b))
+													//abort_b0("Shift/Rotate Operations REQUIRE r2 / r2b or Immediate as second operand");
+												r13 = token;
+												r5 = [r14+r13*8];
+												r5 = r5 - HASH_OFFSET;
+												r4 = HASH_r2;
+												if(r5 != r4){
+													r4 = HASH_r2b;
+													if(r5 != r4){
+														abort_b0('Shift/Rotate Operations REQUIRE r2 / r2b or Immediate as second operand');
+													}
+												}
+												//fprintf(code, "r2b\n");
+												echo_string(r15, 'r2b\n');
+											//} else {
+											} else {
+												//TokenIsLabelType(TYPE_REG);
+												TokenIsLabelType(TYPE_REG);
+												// Everything must be okay, so lets output our second operand.
+												//fprintf(code, "%s\n", hash_table[token_stack[token]-HASH_OFFSET].token);
+												r13 = token;
+												r5 = [r14+r13*8];
+												r5 = r5 - HASH_OFFSET;
+												r5 = &hash_table[r5].token;
+												echo_string(r15, r5);
+												echo_string(r15, '\n');
+											//}
+											}
+											// Load the destination register if required!
+											//switch(state) {
+												//case TOKEN_MULTIPLY:
+												//case TOKEN_DIVIDE:
+												//case TOKEN_S_MULTIPLY:
+												//case TOKEN_S_DIVIDE:
+													//if (target != HASH_r0)
+														//fprintf(code, "\tmov %s, r0\n", hash_table[target].token);
+													//break;
+												//case TOKEN_MODULUS:
+												//case TOKEN_S_MODULUS:
+													//if (target != HASH_r3)
+														//fprintf(code, "\tmov %s, r3\n", hash_table[target].token);
+													//break;
+											//}
+											r3 = state;
+											r4 = TOKEN_MULTIPLY;
+											r1 = target;
+											r2 = HASH_r0;
+											r5 = &hash_table[r1].token;
+											if(r3 == r4){
+												if(r1!=r2){
+													echo_string(r15, '\tmov ');
+													echo_string(r15, r5);
+													echo_string(r15, ', r0\n');
+												}
+											} else {
+												r4 = TOKEN_DIVIDE;
+												if(r3 == r4){
+													if(r1!=r2){
+														echo_string(r15, '\tmov ');
+														echo_string(r15, r5);
+														echo_string(r15, ', r0\n');
+													}
+												} else {
+													r4 = TOKEN_S_DIVIDE;
+													if(r3 == r4){
+														if(r1!=r2){
+															echo_string(r15, '\tmov ');
+															echo_string(r15, r5);
+															echo_string(r15, ', r0\n');
+														}
+													} else {
+														r4 = TOKEN_S_MULTIPLY;
+														if(r3 == r4){
+															if(r1!=r2){
+																echo_string(r15, '\tmov ');
+																echo_string(r15, r5);
+																echo_string(r15, ', r0\n');
+															}
+														} else {
+															r4 = TOKEN_MODULUS;
+															r2 = HASH_r3;
+															if(r3 == r4){
+																if(r1!=r2){
+																	echo_string(r15, '\tmov ');
+																	echo_string(r15, r5);
+																	echo_string(r15, ', r3\n');
+																}
+															} else {
+																r4 = TOKEN_S_MODULUS;
+																if(r3 == r4){
+																	if(r1!=r2){
+																		echo_string(r15, '\tmov ');
+																		echo_string(r15, r5);
+																		echo_string(r15, ', r3\n');
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+											//token++;
+											r13 = token;
+											r13 = r13 + 1;
+											token = r13;
+										//}
+										}
+										//atStackEnd(i);
+										atStackEnd(r12);
+									//} else {
+									} else {
+										// We have a single register load!
+										r2 = token;
+										r2 = r2 - 1;
+										r3 = [r14+r2*8];
+										r3 = r3 - HASH_OFFSET;
+										r2 = target;
+										//if (target != (token_stack[token-1]-HASH_OFFSET))
+											// Don't output code, if r0 = r0; type is present.
+											//fprintf(code, "\tmov %s, %s\n", hash_table[target].token, hash_table[token_stack[token-1]-HASH_OFFSET].token);
+										if(r2 != r3){
+											r2 = &hash_table[r2].token;
+											r3 = &hash_table[r3].token;
+											echo_string(r15, '\tmov ');
+											echo_string(r15, r2);
+											echo_string(r15, ', ');
+											echo_string(r15, r3);
+											echo_string(r15, '\n');
+										}
+									//}
+									}
+								//} else {
+								} else {
+									// We must have a proc!
+									//callProc((token_stack[token])-HASH_OFFSET, target, i);
+									r13 = token;
+									r2 = [r14+r13*8];
+									r2 = r2 - HASH_OFFSET;
+									r1 = target;
+									callProc(r2, r1, r12);
+								//}
+								}
+							//}
+							}
+						//}
+						}
+					//}
+					}
+				//}
+				}
+			//} else {
+			} else {
+				//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_REG_SHORT) {
+				r4 = TYPE_REG_SHORT;
+				if(r3 == r4){
+					// Look like we have a short reg...
+					// This is going to be easy, as short regs can only be used with pointer operations.
+					if(r11){
+						echo_string(STDOUT, 'Processing small register load operation\n');
+					}
+					//fprintf(code, "\tmov %s, [", hash_table[token_stack[token]-HASH_OFFSET].token);
+					r13 = token;
+					r2 = [r14+r13*8];
+					r2 = r2 - HASH_OFFSET;
+					r2 = &hash_table[r2].token;
+					echo_string(r15, '\tmov ');
+					echo_string(r15, r2);
+					echo_string(r15, ', [');
+					//token++;
+					r13 = r13 + 1;
+					token = r13;
+					//TokenIs(TOKEN_EQUATE);
+					TokenIs(TOKEN_EQUATE);
+					//token++;
+					r13 = r13 + 1;
+					token = r13;
+					//TokenIs(TOKEN_ARRAY_START);
+					TokenIs(TOKEN_ARRAY_START);
+					//token++;
+					r13 = r13 + 1;
+					token = r13;
+					//Global_Pointer(i);
+					Global_Pointer(r12);
+					//TokenIs(TOKEN_ARRAY_END);
+					TokenIs(TOKEN_ARRAY_END);
+					//fprintf(code, "]\n");
+					echo_string(r15, ']\n');
+					//token++;
+					r13 = r12;
+					token = r13;
+				//} else {
+				} else {
+					// Whatever we have left treat as proc.
+					//callProc(token_stack[token]-HASH_OFFSET, HASH_r0, i);
+					r13 = token;
+					r2 = [r14+r13*8];
+					r2 = r2 - HASH_OFFSET;
+					callProc(r2, HASH_r0, r12);
+				//}
+				}
+			//}
+			}
+		//}
+		}
+	}
+	//return(0);
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+}
+
+proc process_fpu_operation(i) {
+	v_base = 0;
+	v_isStruc = 0;
+	v_offset = 0;
+	v_offset_type = 0;
+	v_size = 0;
+	v_index = 0;
+	v_target = 0;
+	v_global = 0;
+	v_reg = 0;
+	
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12, r13, r14, r15;
+	r15 = code;
+	r14 = &token_stack;
+	r13 = token;
+	r12 = i;
+	r11 = DEBUG;
+	r1 = [r14+r13*8];
+	r2 = TOKEN_ARRAY_START;
+
+	//if ( token_stack[token] == TOKEN_ARRAY_START) {
+	if(r1 == r2){
+		//Process global memory reference;
+		//fprintf(code, "\tfstp tword [");
+		echo_string(r15, '\tfstp tword [');
+		//token++;	//Increase token pointer;
+		r13 = r13 + 1;
+		token = r13;
+		//Global_Pointer(i);
+		Global_Pointer(r12);
+		//TokenIs(TOKEN_ARRAY_END);
+		TokenIs(TOKEN_ARRAY_END);
+		//fprintf(code, "]\n");
+		echo_string(r15, ']\n');
+		//token++;
+		r13 = token;
+		r13 = r13 + 1;
+		token = r13;
+		//TokenIs(TOKEN_EQUATE);
+		TokenIs(TOKEN_EQUATE);
+		//token++;
+		r13 = r13 + 1;
+		token = r13;
+		r1 = [r14+r13*8];
+		r2 = HASH_fp0+HASH_OFFSET;
+		//if (token_stack[token] != HASH_fp0+HASH_OFFSET)
+			//abort_b0("fp0 Expected");
+		if(r1 != r2){
+			abort_b0('fp0 Expected');
+		}
+		//token++;
+		r13 = r13 + 1;
+		token = r13;
+		//atStackEnd(i);
+		atStackEnd(r12);
+	//} else {
+	} else {
+		// We can have a label or FPU reg?
+		// we must have a register, function, or label
+		//if (token_stack[token] == TOKEN_ARRAY_END)
+			//abort_b0("Unexpected token ']'");
+		r2 = TOKEN_ARRAY_END;
+		if(r1 == r2){
+			abort_b0('Unexpected token \']\'');
+		}
+		r2 = r1 - HASH_OFFSET;
+		r3 = hash_table[r2].token_type;
+		r4 = r3 && 0fh;
+		//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & 0xf) > 0) {
+		if(r4){
+			// We have a label;
+			//if(DEBUG)
+				//printf("Processing line with variable destination\n");
+			if(r11){
+				echo_string(STDOUT, 'Processing line with variable destination\n');
+			}
+			//BuildLabelInfo(i);
+			BuildLabelInfo(r12);
+			//TokenIs(TOKEN_EQUATE);
+			TokenIs(TOKEN_EQUATE);
+			//token++;
+			r13 = token;
+			r13 = r13 + 1;
+			token = r13;
+			//v_target = token;
+			v_target = r13;
+			r1 = [r14+r13*8];
+			r2 = HASH_fp0+HASH_OFFSET;
+			//if (token_stack[token] != HASH_fp0+HASH_OFFSET)
+				//abort_b0("fp0 Expected");
+			if(r1 != r2){
+				abort_b0('fp0 Expected');
+			}
+			//token++;
+			r13 = r13 + 1;
+			token = r13;
+			//atStackEnd(i);
+			atStackEnd(r12);
+
+			// Now we have all our information, so let build the instruction...
+			//if(DEBUG){
+				//DisplayLabelInfo();	
+			//}
+			if(r11){
+				DisplayLabelInfo();
+			}
+			
+			r5 = 0;
+			r2 = v_isStruc;
+			r1 = 1;
+			r3 = state;
+			r4 = 38h; //'8'
+			
+			//if ((v_isStruc == 1)||(state=='8')) {
+			if(r2 == r1){ r5 = 1; }
+			if(r3 == r4){ r5 = 1; }
+			if(r5){
+				// What we do, is calculate the offset for any struc operation, and then do a
+				// fstp [r6|r14|r15] operation.
+
+				//Set_v_reg();	//v_reg is the register we are going to use.
+				Set_v_reg();
+
+				//fprintf(code, "\tpush %s\n", hash_table[v_reg].token);
+				r0 = v_reg;
+				r1 = &hash_table[r0].token;
+				echo_string(r15, '\tpush ');
+				echo_string(r15, r1);
+				echo_string(r15, '\n');
+				
+				//Calculate_label_address(i);
+				Calculate_label_address(r12);
+				
+				//Now we are ready to store the value...
+				r0 = state;
+				r1 = CHAR_b; // 'b'
+				r2 = v_reg;
+				r2 = &hash_table[r2].token;
+				//switch(state){
+				if (r0 == r1){
+					//case 'b' : abort_b0("Cannot store FPU into byte");	break;
+					abort_b0('Cannot store FPU into byte');
+				} else {
+					r1 = CHAR_w;
+					if (r0 == r1){
+						//case 'w' : fprintf(code, "\tfistp word [%s]\n", hash_table[v_reg].token); break;
+						echo_string(r15, '\tfistp word [');
+						echo_string(r15, r2);
+						echo_string(r15, ']\n');
+					} else {
+						//#ifndef i386
+						//case 'd' : fprintf(code, "\tfistp dword [%s]\n", hash_table[v_reg].token); break;
+						//case ' ' : fprintf(code, "\tfistp qword [%s]\n", hash_table[v_reg].token); break;
+						//#else
+						//case ' ' : fprintf(code, "\tfistp dword [%s]\n", hash_table[v_reg].token); break;
+						//#endif
+						#ifndef i386;
+						r1 = CHAR_d; // 'w'
+						#else;
+						r1 = CHAR_SPACE; // ' '
+						#endif;
+						if(r0 == r1){
+							echo_string(r15, '\tfistp dword [');
+							echo_string(r15, r2);
+							echo_string(r15, ']\n');
+						} else {
+							r1 = CHAR_SPACE;
+							if(r0 == r1){
+								echo_string(r15, '\tfistp qword [');
+								echo_string(r15, r2);
+								echo_string(r15, ']\n');
+							} else {
+								r1 = CHAR_3;
+								if (r0 == r1){
+									//case '3' : fprintf(code, "\tfstp dword [%s]\n", hash_table[v_reg].token); break;
+									echo_string(r15, '\tfstp dword [');
+									echo_string(r15, r2);
+									echo_string(r15, ']\n');
+								} else {
+									r1 = CHAR_6;
+									if (r0 == r1){
+										//case '6' : fprintf(code, "\tfstp qword [%s]\n", hash_table[v_reg].token); break;
+										echo_string(r15, '\tfstp qword [');
+										echo_string(r15, r2);
+										echo_string(r15, ']\n');
+									} else {
+										//default  : fprintf(code, "\tfstp tword [%s]\n", hash_table[v_reg].token); break;
+										echo_string(r15, '\tfstp tword [');
+										echo_string(r15, r2);
+										echo_string(r15, ']\n');
+									}
+								}
+							}
+						}
+					}
+				}
+				//}
+				//fprintf(code, "\tpop %s\n", hash_table[v_reg].token);
+				echo_string(r15, '\tpop ');
+				echo_string(r15, r2);
+				echo_string(r15, '\n');
+			//} else {
+			} else {
+				// Non-structure definition, so this should be quick.
+				r0 = state;
+				r1 = CHAR_b; // 'b'
+				if (r0 == r1){
+					//case 'b' : abort_b0("Cannot store FPU into byte");	break;
+					abort_b0('Cannot store FPU into byte');
+				} else {
+					r1 = CHAR_w;
+					if (r0 == r1){
+						//case 'w' : fprintf(code, "\tfistp word "); break;
+						echo_string(r15, '\tfistp word ');
+					} else {
+						//#ifndef i386
+						//case 'd' : fprintf(code, "\tfistp dword "); break;
+						//case ' ' : fprintf(code, "\tfistp qword "); break;
+						//#else
+						//case ' ' : fprintf(code, "\tfistp dword "); break;
+						//#endif
+						#ifndef i386;
+						r1 = CHAR_d; // 'w'
+						#else;
+						r1 = CHAR_SPACE; // ' '
+						#endif;
+						if(r0 == r1){
+							echo_string(r15, '\tfistp dword ');
+						} else {
+							r1 = CHAR_SPACE;
+							if(r0 == r1){
+								echo_string(r15, '\tfistp qword ');
+							} else {
+								r1 = CHAR_3;
+								if (r0 == r1){
+									//case '3' : fprintf(code, "\tfstp dword "); break;
+									echo_string(r15, '\tfstp dword ');
+								} else {
+									r1 = CHAR_6;
+									if (r0 == r1){
+										//case '6' : fprintf(code, "\tfstp qword "); break;
+										echo_string(r15, '\tfstp qword ');
+									} else {
+										echo_string(r15, '\tfstp tword ');
+									}
+								}
+							}
+						}
+					}
+				}
+				//Calculate_NSLabel_address(i);
+				Calculate_NSLabel_address(r12);
+				//fprintf(code, "\n");
+				echo_string(r15, '\n');
+			//}
+			}
+			//token = i;
+			r13 = token;
+			i = r13;
+		//} else {
+		} else {
+			// We should have a FPU REG
+			//TokenIsLabelType(TYPE_REG_FPU);
+			TokenIsLabelType(TYPE_REG_FPU);
+			//if(DEBUG)
+				//printf("Processing line with FPU register destination\n");
+			if(r11){
+				echo_string(STDOUT, 'Processing line with FPU register destination\n');
+			}
+			//target = token_stack[token]-HASH_OFFSET; //Store hash of target.
+			r13 = token;
+			r1 = [r14+r13*8];
+			r2 = r1 - HASH_OFFSET;
+			target = r2;
+			//token++;
+			r13 = r13 + 1;
+			token = r13;
+			//TokenIs(TOKEN_EQUATE);
+			TokenIs(TOKEN_EQUATE);
+			//token++;
+			r13 = r13 + 1;
+			token = r13;
+			r0 = HASH_fp0;
+			//if (target == HASH_fp0){
+			if(r2 == r0){
+				// Handle fp0 = something;
+				r1 = [r14+r13*8];
+				r4 = 0;
+				r2 = TOKEN_OFFSET;
+				if (r1 < r2){ r4 = 1; }
+				r2 = TOKEN_MINUS;
+				if (r1 == r2){ r4 = 1; }
+				//if ((token_stack[token] < TOKEN_OFFSET) || (token_stack[token] == TOKEN_MINUS)){
+				if(r4){
+					// We have a direct number load.
+					r15 = data;
+					//fprintf(data, "B0_DynNum%d dt ", dynamic_string_count);
+					echo_string(r15, 'B0_DynNum');
+					r4 = dynamic_string_count;
+					echo_integer(r15, r4);
+					echo_string(r15, ' dt ');
+					//if (token_stack[token] == TOKEN_MINUS){
+						//fprintf(data, "-");
+						//token++;
+					//}
+					if(r1 == r2){
+						echo_string(r15, '-');
+						r13 = r13 + 1;
+						token = r13;
+					}
+					//if (token_stack[token] > TOKEN_OFFSET)
+						//abort_b0("Immediate Expected");
+					r1 = [r14+r13*8];
+					r2 = TOKEN_OFFSET;
+					if (r1 > r2){
+						abort_b0('Immediate Expected');
+					}
+					//outputNumberD(i,NUM_DECIMAL);
+					outputNumber(r12,NUM_DECIMAL, r15);
+					//fprintf(data, "\n");
+					echo_string(r15, '\n');
+					r15 = code;
+					//fprintf(code, "\tfld tword [B0_DynNum%d]\n", dynamic_string_count);
+					echo_string(r15, '\tfld tword [B0_DynNum');
+					echo_integer(r15, r4);
+					echo_string(r15, ']\n');
+					//dynamic_string_count++; // Inc the number of dynamic strings we have
+					r4 = r4 + 1;
+					dynamic_string_count = r4;
+					//atStackEnd(i);
+					atStackEnd(r12);
+				//} else {
+				} else {
+					// We have a label or register or global!
+					r2 = TOKEN_ARRAY_START;
+					//if (token_stack[token] == TOKEN_ARRAY_START){
+					if(r1 == r2){
+						// Looks like we have a global
+						//fprintf(code, "\tfld tword [");
+						echo_string(r15, '\tfld tword [');
+						//token++;	//Increase token pointer;
+						r13 = r13 + 1;
+						token = r13;
+						//Global_Pointer(i);
+						Global_Pointer(r12);
+						//TokenIs(TOKEN_ARRAY_END);
+						TokenIs(TOKEN_ARRAY_END);
+						//fprintf(code, "]\n");
+						echo_string(r15, ']\n');
+						//token++;
+						r13 = token;
+						r13 = r13 + 1;
+						token = r13;
+						//atStackEnd(i);
+						atStackEnd(r12);
+					//} else {
+					} else {
+						// We can only have a reg or label
+						//if (token_stack[token] < HASH_OFFSET)
+							//abort_b0("Expected Label or FPU Register");
+						r2 = HASH_OFFSET;
+						if (r1 < r2){
+							abort_b0('Expected Label or FPU Register');
+						}
+						r1 = r1 - r2;
+						r2 = hash_table[r1].token_type;
+						r3 = r2 && 0fh;
+						//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & 0xf) > 0) {
+						if(r3){
+							// We have a label
+							//if(DEBUG)
+								//printf("Loading fp0 with variable\n");
+							if(r11){
+								echo_string(STDOUT, 'Loading fp0 with variable\n');
+							}
+							//v_target = 0;
+							v_target = 0;
+							//BuildLabelInfo(i);
+							BuildLabelInfo(r12);
+							//atStackEnd(i);
+							atStackEnd(r12);
+
+							// Now we have all our information, so let build the instruction...
+							//if(DEBUG){
+								//DisplayLabelInfo();	
+							//}
+							if(r11){
+								DisplayLabelInfo();
+							}
+							r5 = 0;
+							r2 = v_isStruc;
+							r1 = 1;
+							r3 = state;
+							r4 = 38h; //'8'
+							
+							//if ((v_isStruc == 1)||(state=='8')) {
+							if(r2 == r1){ r5 = 1; }
+							if(r3 == r4){ r5 = 1; }
+							if(r5){
+								// What we do, is calculate the offset for any struc operation, and then do a
+								// fstp [r6|r14|r15] operation.
+	
+								//Set_v_reg();	//v_reg is the register we are going to use.
+								Set_v_reg();
+								//fprintf(code, "\tpush %s\n", hash_table[v_reg].token);
+								r5 = v_reg;
+								r5 = &hash_table[r5].token;
+								echo_string(r15, '\tpush ');
+								echo_string(r15, r5);
+								echo_string(r15, '\n');
+								
+								//Calculate_label_address(i);
+								Calculate_label_address(r12);
+												
+								//Now we are ready to store the value...
+								//switch(state){
+									//case 'b' : abort_b0("Cannot store FPU into byte");	break;
+									//case 'w' : fprintf(code, "\tfild word [%s]\n", hash_table[v_reg].token); break;
+									//#ifndef i386
+									//case 'd' : fprintf(code, "\tfild dword [%s]\n", hash_table[v_reg].token); break;
+									//case ' ' : fprintf(code, "\tfild qword [%s]\n", hash_table[v_reg].token); break;
+									//#else
+									//case ' ' : fprintf(code, "\tfild dword [%s]\n", hash_table[v_reg].token); break;
+									//#endif
+									//case '3' : fprintf(code, "\tfld dword [%s]\n", hash_table[v_reg].token); break;
+									//case '6' : fprintf(code, "\tfld qword [%s]\n", hash_table[v_reg].token); break;
+									//default  : fprintf(code, "\tfld tword [%s]\n", hash_table[v_reg].token); break;
+								//}
+												//Now we are ready to store the value...
+								r0 = state;
+								r1 = CHAR_b; // 'b'
+								r2 = v_reg;
+								r2 = &hash_table[r2].token;
+								//switch(state){
+								if (r0 == r1){
+									abort_b0('Cannot load FPU from byte');
+								} else {
+									r1 = CHAR_w;
+									if (r0 == r1){
+										echo_string(r15, '\tfild word [');
+										echo_string(r15, r2);
+										echo_string(r15, ']\n');
+									} else {
+										#ifndef i386;
+										r1 = CHAR_d; // 'w'
+										#else;
+										r1 = CHAR_SPACE; // ' '
+										#endif;
+										if(r0 == r1){
+											echo_string(r15, '\tfild dword [');
+											echo_string(r15, r2);
+											echo_string(r15, ']\n');
+										} else {
+											r1 = CHAR_SPACE;
+											if(r0 == r1){
+												echo_string(r15, '\tfild qword [');
+												echo_string(r15, r2);
+												echo_string(r15, ']\n');
+											} else {
+												r1 = CHAR_3;
+												if (r0 == r1){
+													echo_string(r15, '\tfld dword [');
+													echo_string(r15, r2);
+													echo_string(r15, ']\n');
+												} else {
+													r1 = CHAR_6;
+													if (r0 == r1){
+														echo_string(r15, '\tfld qword [');
+														echo_string(r15, r2);
+														echo_string(r15, ']\n');
+													} else {
+														echo_string(r15, '\tfld tword [');
+														echo_string(r15, r2);
+														echo_string(r15, ']\n');
+													}
+												}
+											}
+										}
+									}
+								}
+								//}
+
+								//fprintf(code, "\tpop %s\n", hash_table[v_reg].token);
+								r5 = v_reg;
+								r5 = &hash_table[r5].token;
+								echo_string(r15, '\tpop ');
+								echo_string(r15, r5);
+								echo_string(r15, '\n');
+				
+							//} else {
+							} else {
+								// Non-structure definition, so this should be quick.
+								//switch(state){
+									//case 'b' : abort_b0("Cannot store FPU into byte");	break;
+									//case 'w' : fprintf(code, "\tfild word "); break;
+									//#ifndef i386
+									//case 'd' : fprintf(code, "\tfild dword "); break;
+									//case ' ' : fprintf(code, "\tfild qword "); break;
+									//#else
+									//case ' ' : fprintf(code, "\tfild dword "); break;
+									//#endif
+									//case '3' : fprintf(code, "\tfld dword "); break;
+									//case '6' : fprintf(code, "\tfld qword "); break;
+								//}
+								//Calculate_NSLabel_address(i);
+								//fprintf(code, "\n");
+								r0 = state;
+								r1 = CHAR_b; // 'b'
+								if (r0 == r1){
+									abort_b0('Cannot store FPU into byte');
+								} else {
+									r1 = CHAR_w;
+									if (r0 == r1){
+										echo_string(r15, '\tfild word ');
+									} else {
+										#ifndef i386;
+										r1 = CHAR_d; // 'w'
+										#else;
+										r1 = CHAR_SPACE; // ' '
+										#endif;
+										if(r0 == r1){
+											echo_string(r15, '\tfild dword ');
+										} else {
+											r1 = CHAR_SPACE;
+											if(r0 == r1){
+												echo_string(r15, '\tfild qword ');
+											} else {
+												r1 = CHAR_3;
+												if (r0 == r1){
+													echo_string(r15, '\tfld dword ');
+												} else {
+													r1 = CHAR_6;
+													if (r0 == r1){
+														echo_string(r15, '\tfld qword ');
+													} else {
+														echo_string(r15, '\tfld tword ');
+													}
+												}
+											}
+										}
+									}
+								}
+								Calculate_NSLabel_address(r12);
+								echo_string(r15, '\n');
+							//}
+							}
+						//} else {
+						} else {
+							// We MUST have a FPU Reg.
+							//TokenIsLabelType(TYPE_REG_FPU);
+							TokenIsLabelType(TYPE_REG_FPU);
+							r13 = token;
+							// All we can have here is a TOS load, or a math operation.
+							r1 = [r14+r13*8];
+							r2 = HASH_fp0+HASH_OFFSET;
+							//if (token_stack[token] == HASH_fp0+HASH_OFFSET){
+							if (r1 == r2){
+								// We MUST have a math function
+								//token++;
+								r13 = r13 + 1;
+								token = r13;
+								//if (token != i){
+								if (r13 != r12){
+									//Process our math operator
+									r1 = [r14+r13*8];
+									//state = token_stack[token];
+									state = r1;
+									//token++;
+									r13 = r13 + 1;
+									token = r13;
+									//if (token == i)
+										//abort_b0("Expected FPU Register");
+									if (r13 == r12){
+										abort_b0('Expected FPU Register');
+									}
+									//TokenIsLabelType(TYPE_REG_FPU);
+									TokenIsLabelType(TYPE_REG_FPU);
+									r13 = token;
+									//switch(state){
+									r1 = [r14+r13*8];
+									r3 = r1 - HASH_OFFSET;
+									r2 = &hash_table[r3].token;
+									r0 = state;
+									r1 = TOKEN_ADD;
+									if(r0 == r1){
+										//case TOKEN_ADD: fprintf(code, "\tfadd fp0, %s\n", hash_table[token_stack[token]-HASH_OFFSET].token); break;
+										echo_string(r15, '\tfadd fp0, ');
+										echo_string(r15, r2);
+										echo_string(r15, '\n');
+									} else {
+										r1 = TOKEN_MINUS;
+										if(r0 == r1){
+											//case TOKEN_MINUS: fprintf(code, "\tfsub fp0, %s\n", hash_table[token_stack[token]-HASH_OFFSET].token); break;
+										echo_string(r15, '\tfsub fp0, ');
+										echo_string(r15, r2);
+										echo_string(r15, '\n');
+										} else {
+											r1 = TOKEN_MULTIPLY;
+											if(r0 == r1){
+												//case TOKEN_MULTIPLY:
+												echo_string(r15, '\tfmul fp0, ');
+												echo_string(r15, r2);
+												echo_string(r15, '\n');
+											} else {
+												r1 = TOKEN_S_MULTIPLY;
+												if(r0 == r1){
+													//case TOKEN_S_MULTIPLY: fprintf(code, "\tfmul fp0, %s\n", hash_table[token_stack[token]-HASH_OFFSET].token); break;
+													echo_string(r15, '\tfmul fp0, ');
+													echo_string(r15, r2);
+													echo_string(r15, '\n');
+												} else {
+													r1 = TOKEN_DIVIDE;
+													if(r0 == r1){
+														//case TOKEN_DIVIDE:
+														echo_string(r15, '\tfdiv fp0, ');
+														echo_string(r15, r2);
+														echo_string(r15, '\n');
+													} else {
+														r1 = TOKEN_S_DIVIDE;
+														if(r0 == r1){
+															//case TOKEN_S_DIVIDE: fprintf(code, "\tfdiv fp0, %s\n", hash_table[token_stack[token]-HASH_OFFSET].token); break;
+															echo_string(r15, '\tfdiv fp0, ');
+															echo_string(r15, r2);
+															echo_string(r15, '\n');
+														} else {
+															r1 = TOKEN_MODULUS;
+															if(r0 == r1){
+																//case TOKEN_MODULUS:
+																r1 = HASH_fp1;
+																if (r3 != r1){ 
+																	abort_b0('Floating Point Modulus requires 2nd operand to be fp1');
+																}
+																echo_string(r15, '\tfprem1\n');
+															} else {
+																r1 = TOKEN_S_MODULUS;
+																if(r0 == r1){
+																//case TOKEN_S_MODULUS:
+																	//if (token_stack[token] != HASH_fp1+HASH_OFFSET)
+																		//abort_b0("Floating Point Modulus requires 2nd operand to be fp1");
+																	//fprintf(code, "\tfprem1\n");											
+																	//break;
+																	r1 = HASH_fp1;
+																	if (r3 != r1){ 
+																		abort_b0('Floating Point Modulus requires 2nd operand to be fp1');
+																	}
+																	echo_string(r15, '\tfprem1\n');
+																} else {
+																	//default: abort_b0("Invalid construct"); break;
+																	abort_b0('Invalid construct');
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+									//}
+									//token++;
+									r13 = token;
+									r13 = r13 + 1;
+									token = r13;
+									//atStackEnd(i);
+									atStackEnd(r12);
+								//} else {
+								} else {
+									// Looks like a dup ST0 operation.
+									//fprintf(code, "\tfld fp0\n");
+									echo_string(r15, '\tfld fp0\n');
+									//atStackEnd(i);
+									atStackEnd(r12);
+								//}
+								}
+							//} else {
+							} else {
+								// We MUST have a TOS load or a reverse math operation.
+								//target = token_stack[token]-HASH_OFFSET;
+								r1 = [r14+r13*8];
+								r2 = r1 - HASH_OFFSET;
+								target = r2;
+								//token++;
+								r13 = r13 + 1;
+								token = r13;
+								//if (token != i){
+								if(r13 != r12){
+									//Process our math operator
+									r1 = [r14+r13*8];
+									//state = token_stack[token];
+									state = r1;
+									//token++;
+									r13 = r13 + 1;
+									token = r13;
+									//if (token == i)
+										//abort_b0("Expected FPU Register");
+									if(r13 == r12){
+										abort_b0('Expected FPU Register');
+									}
+									//TokenIsLabelType(TYPE_REG_FPU);
+									TokenIsLabelType(TYPE_REG_FPU);
+									r13 = token;
+									r1 = [r14+r13*8];
+									r2 = HASH_fp0+HASH_OFFSET;
+									//if (token_stack[token] != HASH_fp0+HASH_OFFSET)
+										//abort_b0("Operand register is not the same as the target register");
+									if(r1 != r2){
+										abort_b0('Operand register is not the same as the target register');
+									}
+									r0 = state;
+									//switch(state){
+										//case TOKEN_ADD: fprintf(code, "\tfadd fp0, %s\n", hash_table[target].token); break;
+										//case TOKEN_MINUS: fprintf(code, "\tfsubr fp0, %s\n", hash_table[target].token); break;
+										//case TOKEN_MULTIPLY:
+										//case TOKEN_S_MULTIPLY: fprintf(code, "\tfmul fp0, %s\n", hash_table[target].token); break;
+										//case TOKEN_DIVIDE:
+										//case TOKEN_S_DIVIDE: fprintf(code, "\tfdivr fp0, %s\n", hash_table[target].token); break;
+										//default: abort_b0("Invalid construct"); break;
+									//}
+									r0 = target;
+									//r1 = [r14+r0*8];
+									//r1 = r1 - HASH_OFFSET;
+									r2 = &hash_table[r0].token;
+									r0 = state;
+									r1 = TOKEN_ADD;
+									if(r0 == r1){
+										echo_string(r15, '\tfadd fp0, ');
+										echo_string(r15, r2);
+										echo_string(r15, '\n');
+									} else {
+										r1 = TOKEN_MINUS;
+										if(r0 == r1){
+											echo_string(r15, '\tfsubr fp0, ');
+											echo_string(r15, r2);
+											echo_string(r15, '\n');
+										} else {
+											r1 = TOKEN_MULTIPLY;
+											if(r0 == r1){
+												echo_string(r15, '\tfmul fp0, ');
+												echo_string(r15, r2);
+												echo_string(r15, '\n');
+											} else {
+												r1 = TOKEN_S_MULTIPLY;
+												if(r0 == r1){
+													echo_string(r15, '\tfmul fp0, ');
+													echo_string(r15, r2);
+													echo_string(r15, '\n');
+												} else {
+													r1 = TOKEN_DIVIDE;
+													if(r0 == r1){
+														echo_string(r15, '\tfdivr fp0, ');
+														echo_string(r15, r2);
+														echo_string(r15, '\n');
+													} else {
+														r1 = TOKEN_S_DIVIDE;
+														if(r0 == r1){
+															echo_string(r15, '\tfdivr fp0, ');
+															echo_string(r15, r2);
+															echo_string(r15, '\n');
+														} else {
+															abort_b0('Invalid construct');
+														}
+													}
+												}
+											}
+										}
+									}
+									//token++;
+									r13 = token;
+									r13 = r13 + 1;
+									token = r13;
+									//atStackEnd(i);	
+									atStackEnd(r12);
+								//} else {
+								} else {
+									//fprintf(code, "\tfld %s\n", hash_table[target].token);
+									r1 = &hash_table[r2].token;
+									echo_string(r15, '\tfld ');
+									echo_string(r15, r1);
+									echo_string(r15, '\n');
+								//}								
+								}
+							//}
+							}
+						//}
+						}
+					//}
+					}
+				//}
+				}
+			//} else {
+			} else {
+				// We should have a fp = fp0; or fp = fp {math} fp0;
+				r1 = [r14+r13*8];
+				r1 = r1 - HASH_OFFSET;
+				r0 = target;
+				//if (target == token_stack[token]-HASH_OFFSET){
+				if(r0 == r1){
+					//token++;
+					r13 = r13 + 1;
+					token = r13;
+					//if (token != i){
+					if(r13 != r12){
+						//Process our math operator
+						//state = token_stack[token];
+						r1 = [r14+r13*8];
+						state = r1;
+						//token++;
+						r13 = r13 + 1;
+						token = r13;
+						//if (token == i)
+							//abort_b0("Expected FPU Register");
+						if(r13 == r12){
+							abort_b0('Expected FPU Register');
+						}
+						//TokenIsLabelType(TYPE_REG_FPU);
+						TokenIsLabelType(TYPE_REG_FPU);
+						r13 = token;
+						//if (token_stack[token] != HASH_fp0+HASH_OFFSET)
+							//abort_b0("fp0 Expected");
+						r1 = [r14+r13*8];
+						r2 = HASH_fp0+HASH_OFFSET;
+						if (r1 != r2){
+							abort_b0('fp0 Expected');
+						}
+						//switch(state){
+							//case TOKEN_ADD:	fprintf(code, "\tfadd %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_MINUS: fprintf(code, "\tfsub %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_MULTIPLY:
+							//case TOKEN_S_MULTIPLY: fprintf(code, "\tfmul %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_DIVIDE:
+							//case TOKEN_S_DIVIDE: fprintf(code, "\tfdiv %s, fp0\n", hash_table[target].token); break;
+							//default: abort_b0("Invalid construct"); break;
+						//}
+						//r1 = [r14+r13*8];
+						//r1 = r1 - HASH_OFFSET;
+						r1 = target;
+						r2 = &hash_table[r1].token;
+						r0 = state;
+						r1 = TOKEN_ADD;
+						if(r0 == r1){
+							echo_string(r15, '\tfadd ');
+							echo_string(r15, r2);
+							echo_string(r15, ', fp0\n');
+						} else {
+							r1 = TOKEN_MINUS;
+							if(r0 == r1){
+								echo_string(r15, '\tfsub ');
+								echo_string(r15, r2);
+								echo_string(r15, ', fp0\n');
+							} else {
+								r1 = TOKEN_MULTIPLY;
+								if(r0 == r1){
+									echo_string(r15, '\tfmul ');
+									echo_string(r15, r2);
+									echo_string(r15, ', fp0\n');
+								} else {
+									r1 = TOKEN_S_MULTIPLY;
+									if(r0 == r1){
+										echo_string(r15, '\tfmul ');
+										echo_string(r15, r2);
+										echo_string(r15, ', fp0\n');
+									} else {
+										r1 = TOKEN_DIVIDE;
+										if(r0 == r1){
+											echo_string(r15, '\tfdiv ');
+											echo_string(r15, r2);
+											echo_string(r15, ', fp0\n');
+										} else {
+											r1 = TOKEN_S_DIVIDE;
+											if(r0 == r1){
+												echo_string(r15, '\tfdiv ');
+												echo_string(r15, r2);
+												echo_string(r15, ', fp0\n');
+											} else {
+												abort_b0('Invalid construct');
+											}
+										}
+									}
+								}
+							}
+						}
+						//token++;
+						r13 = token;
+						r13 = r13 + 1;
+						token = r13;
+						//atStackEnd(i);	
+						atStackEnd(r12);
+					//}
+					}
+				//} else {
+				} else {
+					//if (token_stack[token] != HASH_fp0+HASH_OFFSET)
+						//abort_b0("fp0 Expected");
+					r1 = [r14+r13*8];
+					r2 = HASH_fp0+HASH_OFFSET;
+					if(r1 != r2){
+						abort_b0('fp0 Expected');
+					}
+					//token++;
+					r13 = r13 + 1;
+					token = r13;
+					//if (token != i){
+					if(r13 != r12){
+						//Process our math operator
+						//state = token_stack[token];
+						r1 = [r14+r13*8];
+						state = r1;
+						//token++;
+						r13 = r13 + 1;
+						token = r13;
+						//if (token == i)
+							//abort_b0("Expected FPU Register");
+						if(r13 == r12){
+							abort_b0('Expected FPU Register');
+						}
+						//TokenIsLabelType(TYPE_REG_FPU);
+						TokenIsLabelType(TYPE_REG_FPU);
+						r13 = token;
+						r1 = [r14+r13*8];
+						r2 = target;
+						r3 = r2 + HASH_OFFSET;
+						//if (token_stack[token] != (target+HASH_OFFSET))
+							//abort_b0("Operand register is not the same as the target register");
+						if(r1 != r3){
+							abort_b0('Operand register is not the same as the target register');
+						}
+						//switch(state){
+							//case TOKEN_ADD: fprintf(code, "\tfadd %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_MINUS: fprintf(code, "\tfsubr %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_MULTIPLY:
+							//case TOKEN_S_MULTIPLY: fprintf(code, "\tfmul %s, fp0\n", hash_table[target].token); break;
+							//case TOKEN_DIVIDE:
+							//case TOKEN_S_DIVIDE: fprintf(code, "\tfdivr %s, fp0\n", hash_table[target].token); break;
+							//default: abort_b0("Invalid construct"); break;
+						//}
+						//r1 = [r14+r13*8];
+						//r1 = r1 - HASH_OFFSET;
+						r1 = target;
+						r2 = &hash_table[r1].token;
+						r0 = state;
+						r1 = TOKEN_ADD;
+						if(r0 == r1){
+							echo_string(r15, '\tfadd ');
+							echo_string(r15, r2);
+							echo_string(r15, ', fp0\n');
+						} else {
+							r1 = TOKEN_MINUS;
+							if(r0 == r1){
+								echo_string(r15, '\tfsubr ');
+								echo_string(r15, r2);
+								echo_string(r15, ', fp0\n');
+							} else {
+								r1 = TOKEN_MULTIPLY;
+								if(r0 == r1){
+									echo_string(r15, '\tfmul ');
+									echo_string(r15, r2);
+									echo_string(r15, ', fp0\n');
+								} else {
+									r1 = TOKEN_S_MULTIPLY;
+									if(r0 == r1){
+										echo_string(r15, '\tfmul ');
+										echo_string(r15, r2);
+										echo_string(r15, ', fp0\n');
+									} else {
+										r1 = TOKEN_DIVIDE;
+										if(r0 == r1){
+											echo_string(r15, '\tfdivr ');
+											echo_string(r15, r2);
+											echo_string(r15, ', fp0\n');
+										} else {
+											r1 = TOKEN_S_DIVIDE;
+											if(r0 == r1){
+												echo_string(r15, '\tfdivr ');
+												echo_string(r15, r2);
+												echo_string(r15, ', fp0\n');
+											} else {
+												abort_b0('Invalid construct');
+											}
+										}
+									}
+								}
+							}
+						}
+						//token++;
+						r13 = token;
+						r13 = r13 + 1;
+						token = r13;
+						//atStackEnd(i);	
+						atStackEnd(r12);
+					//} else {
+					} else {
+					//	fprintf(code, "\tfxch %s\n", hash_table[target].token);
+						r1 = target;
+						r1 = &hash_table[r1].token;
+						echo_string(r15, '\tfxch ');
+						echo_string(r15, r1);
+						echo_string(r15, '\n');
+					//}
+					}
+				//};
+				}
+			//}
+			}
+		//}
+		}
+	//}
+	}
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+	return(0);
+}
+
+proc process_lib_directive(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12, r13, r14, r15;
+	
+	//atStackStart();
+	atStackStart();
+	// Looks like we need to include a file.
+	//TokenIs(TOKEN_STRING);
+	TokenIs(TOKEN_STRING);
+	//token++; // skip the start of string token
+	r15 = &token_stack;
+	r14 = token;
+	r13 = DEBUG;
+	r14 = r14 + 1;
+	token = r14;
+	r1 = TOKEN_END_STRING;
+	r2 = [r15+r14*8];
+	//while (token_stack[token] != TOKEN_END_STRING){
+		//filename[token-2] = ((unsigned char)token_stack[token] & 0x7f); // Convert to ASCII
+		//filename[token-1] = '\0'; //Null terminate!
+		//token++;
+		//if ((token-1) >= FILENAME_MAX) abort_b0("INTERNAL: Filename generation overflow! - Increase FILENAME_MAX");
+	//}
+	r10 = &filename;
+	r0 = 0;
+	[r10] = r0w;
+	r3 = FILENAME_MAX;
+	while (r2 != r1){
+		r2 = r2 && 07fh;
+		[r10+r14] = r2b;
+		[r10+r14+1] = r0b;
+		r14 = r14 + 1;
+		token = r14;
+		if(r14 >= r3){
+			abort_b0('INTERNAL: Filename generation overflow! - Increase FILENAME_MAX');
+		}
+		r2 = [r15+r14*8];
+	}
+	//TokenIs(TOKEN_END_STRING);
+	TokenIs(TOKEN_END_STRING);
+	//token++;	// Skip TOKEN_END_STRING
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	r0 = i;
+	atStackEnd(r0);
+	// Save current ch and lch values;
+	//file[file_stack_ptr].ch = ch;
+	//file[file_stack_ptr].look_ahead_ch = look_ahead_ch;
+	r0 = ch;
+	r1 = look_ahead_ch;
+	r2 = file_stack_ptr;
+	file[r2].ch = r0;
+	file[r2].look_ahead_ch = r1;
+	// Reset values;
+	//ch = 00;
+	//look_ahead_ch = 00;
+	ch = 0;
+	look_ahead_ch = 0;
+	//file_stack_ptr++;
+	r2 = r2 + 1;
+	file_stack_ptr = r2;
+	//if (file_stack_ptr >= MAX_LIB_DEPTH)
+		//abort_b0("INTERNAL: File Table overflow - too many nested files! - Increase MAX_LIB_DEPTH");
+	r1 = MAX_LIB_DEPTH;
+	if(r2 >= r1){
+		abort_b0('INTERNAL: File Table overflow - too many nested files! - Increase MAX_LIB_DEPTH');
+	}
+	//if (DEBUG)
+		//printf("filename = %s\n", filename);
+	if(r13){
+		echo_string(STDOUT, 'filename = ');
+		echo_string(STDOUT, r10);
+		echo_string(STDOUT, '\n');
+	}
+	//file[file_stack_ptr].handle = fopen(( char *) filename, "r");  // Let's see if it's in our current directory
+	r0 = _fopen(r10, 'r');
+	//if (!file[file_stack_ptr].handle){
+	if(r0){
+		file[r2].handle = r0;
+		r1 = &file[r2].filename;
+		strcpy(r1, r10);
+		file[r2].line_count = 1;
+	} else {
+		// Now we just need to sort through the various include directories
+		//j = 0;
+		r1 = total_paths;
+		r3 = 0;
+		//while (j < total_paths){
+		while(r3 < r1){
+			r9 = &tmp_filename;
+			r8 = &paths[r3].path;
+			//strcpy((char *) tmp_filename, paths[j]);
+			strcpy(r9, r8);
+			//strcat((char *) tmp_filename, (char *) filename);							// attach our include path
+			strcat(r9, r10);
+			//file[file_stack_ptr].handle = fopen(( char *) tmp_filename, "r"); // Attempt to open
+			r4 = _fopen(r9, 'r');
+			//if (DEBUG)
+				//printf("filename = %s; handle = %p\n", tmp_filename, file[file_stack_ptr].handle );
+			if(r13){
+				echo_string(STDOUT, 'filename = ');
+				echo_string(STDOUT, r9);
+				echo_string(STDOUT, '; handle = ');
+				echo_hex(STDOUT, r4);
+				echo_string(STDOUT, '\n');
+			}
+			//if (file[file_stack_ptr].handle){						// We get a good handle
+			if(r4){
+				//strcpy((char *) file[file_stack_ptr].filename, ( char *) filename);	// So copy it to our file-open stack
+				//file[file_stack_ptr].line_count = 1;				// Reset line count.
+				file[r2].handle = r4;
+				r1 = &file[r2].filename;
+				strcpy(r1, r10);
+				file[r2].line_count = 1;
+				//if (DEBUG)
+					//printf("found file: %s in %s\n", filename, paths[j]);
+				if(r13){
+					echo_string(STDOUT, 'found file: ');
+					echo_string(STDOUT, r10);
+					echo_string(STDOUT, ' in ');
+					echo_string(STDOUT, r8);
+					echo_string(STDOUT, '\n');
+				}
+				r3 = r1;
+				//break;												// and exit.
+			//}
+			}
+			//j++;
+			r3 = r3 + 1;
+		//}
+		}
+		//if (!file[file_stack_ptr].handle){
+			//abort_b0("Unable to open file");
+			//exit(1);
+		//}
+		r0 = file[r2].handle;
+		r1 = 0;
+		if (r0 == r1){
+			abort_b0('unable to open file');
+			exit(-1);
+		}
+	//} else {
+		//strcpy((char *) file[file_stack_ptr].filename, ( char *)filename);
+		//file[file_stack_ptr].line_count = 1;
+	//};
+	}
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;	
+}
+
+proc process_syscall_directive(i){
+	push r1, r2;
+	//atStackStart();
+	atStackStart();
+	//fprintf(code, "\t%s\n", hash_table[token_stack[(token-1)]-HASH_OFFSET].token);
+	r1 = code;
+	r0 = token_stack;
+	r0 = r0 - HASH_OFFSET;
+	r2 = &hash_table[r0].token;
+	echo_string(r1, '\t');
+	echo_string(r1, r2);
+	echo_string(r1, '\n');
+	//atStackEnd(i);
+	r0 = i;
+	atStackEnd(r0);
+	pop r2, r1;
+}
+
+proc process_extern_directive(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12, r13, r14, r15;
+	m64 k;
+	
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	//atStackStart();
+	atStackStart();
+	//IsLabelAllocated();
+	IsLabelAllocated();
+	//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_EPROC;
+	r14 = token;
+	r1 = [r15+r14*8];
+	r1 = r1 - HASH_OFFSET;
+	hash_table[r1].token_type = TYPE_EPROC;
+	//token++;
+	r14 = r14 + 1;
+	token = r14;
+	//TokenIs(TOKEN_PARA_START);
+	TokenIs(TOKEN_PARA_START);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//TokenIs(TOKEN_PARA_END);
+	TokenIs(TOKEN_PARA_END);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//if (token != i) {
+	if(r14 != r13){
+		// We must have more in here!
+		//TokenIs(HASH_as+HASH_OFFSET); // The next keyword MUST be 'as';
+		TokenIs(HASH_as+HASH_OFFSET);
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+		//TokenIs(TOKEN_STRING);
+		TokenIs(TOKEN_STRING);
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+		//j = 0;
+		r5 = 0;
+		//k = token_stack[1]-HASH_OFFSET;
+		r4 = [r15+8];
+		r4 = r4 - HASH_OFFSET;
+		k = r4;
+		r4 = &hash_table[r4].token_import_name;
+		r4 = r4 + 2;
+		//while ((token_stack[token] != TOKEN_END_STRING) && (token != i)){
+			//hash_table[k].token_import_name[j] = ((unsigned char)token_stack[token] & 0x7f);
+			//j++;
+			//token++;
+		//}
+		r0 = 0;
+		r1 = [r15+r14*8];
+		r2 = TOKEN_END_STRING;
+		if(r1 != r2) { if(r14 != r13) { r0 = 1; } }
+		while (r0){
+			r1 = r1 && 07fh;
+			[r4+r5] = r1b;
+			r14 = r14 + 1;
+			r5 = r5 + 1;
+			r0 = 0;
+			r1 = [r15+r14*8];
+			if(r1 != r2) { if(r14 != r13) { r0 = 1; } }
+		}
+		token = r14;
+		//TokenIs(TOKEN_END_STRING);
+		TokenIs(TOKEN_END_STRING);
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+		//if (token != i){
+		if(r14 != r13){
+			// Looks like we are even defining the library name where the extern is located in!
+			//TokenIs(HASH_in+HASH_OFFSET);
+			TokenIs(HASH_in+HASH_OFFSET);
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+			//isHash(token_stack[token]);
+			r1 = [r15+r14*8];
+			isHash(r1);
+			//l = token_stack[token]-HASH_OFFSET;
+			r2 = r1 - HASH_OFFSET;
+			//if ((hash_table[l].token_type != 0x0)&&(hash_table[l].token_type != TYPE_ELIB))
+				//abort_b0("Unable to redefine Label/Token"); 
+			r3 = hash_table[r2].token_type;
+			r4 = 0;
+			if (r3 != r4){
+				r4 = TYPE_ELIB;
+				if(r3 != r4){
+					abort_b0('Unable to redefine Label/Token');
+				}
+			}
+			//token++;
+			r14 = r14 + 1;
+			token = r14;
+			//hash_table[l].token_type = TYPE_ELIB;
+			hash_table[r2].token_type = TYPE_ELIB;
+			// Now link the extern name to the export library token.
+			//hash_table[k].token_import_lib = l;
+			r4 = k;
+			hash_table[r4].token_import_lib = r2;
+			//if (token != i){
+			if(r14 != r13){
+				// Looks like we are defining the actual DLL name as well.
+				//TokenIs(HASH_as+HASH_OFFSET); // The next keyword MUST be 'as';
+				TokenIs(HASH_as+HASH_OFFSET);
+				//token++;
+				r14 = token;
+				r14 = r14 + 1;
+				token = r14;
+				//TokenIs(TOKEN_STRING);
+				TokenIs(TOKEN_STRING);
+				//token++;
+				r14 = token;
+				r14 = r14 + 1;
+				token = r14;
+				//j = 0;
+				r5 = 0;
+				r4 = &hash_table[r2].token_import_name;
+				r4 = r4 + 2;
+				//while ((token_stack[token] != TOKEN_END_STRING) && (token != i)){
+					//hash_table[l].token_import_name[j] = ((unsigned char)token_stack[token] & 0x7f);
+					//j++;
+					//token++;
+				//}
+				r0 = 0;
+				r1 = [r15+r14*8];
+				r2 = TOKEN_END_STRING;
+				if(r1 != r2) { if(r14 != r13) { r0 = 1; } }
+				while (r0){
+					r1 = r1 && 07fh;
+					[r4+r5] = r1b;
+					r14 = r14 + 1;
+					r5 = r5 + 1;
+					r0 = 0;
+					r1 = [r15+r14*8];
+					if(r1 != r2) { if(r14 != r13) { r0 = 1; } }
+				}
+				token = r14;				
+				//TokenIs(TOKEN_END_STRING);
+				TokenIs(TOKEN_END_STRING);
+				//token++;
+				r14 = token;
+				r14 = r14 + 1;
+				token = r14;
+			//}
+			}
+		//}
+		}
+	//};
+	}
+	//atStackEnd(i);
+	atStackEnd(r13);
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;	
+}
+
+proc process_pushpop_directive(i) {
+	push r15, r14, r13, r12, r1;
+	//atStackStart();
+	atStackStart();
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = code;
+	//j = token_stack[0]-HASH_OFFSET;
+	r1 = [r15];
+	r1 = r1 - HASH_OFFSET;
+	//while (token < i){
+	while(r14 < r13){
+		//TokenIsLabelType(TYPE_REG); // Only allow 64 bit regs
+		TokenIsLabelType(TYPE_REG);
+		r14 = token;
+		//fprintf(code, "\t%s %s\n", hash_table[j].token, hash_table[token_stack[token]-HASH_OFFSET].token);
+		echo_string(r12, '\t');
+		r0 = &hash_table[r1].token;
+		echo_string(r12, r0);
+		echo_string(r12, ' ');
+		r0 = [r15+r14*8];
+		r0 = r0 - HASH_OFFSET;
+		r0 = &hash_table[r0].token;
+		echo_string(r12, r0);
+		echo_string(r12, '\n');
+		//token++;
+		r14 = r14 + 1;
+		token = r14;
+		//if (token < i){
+		if(r14 < r13){
+			//TokenIs(TOKEN_COMMA);
+			TokenIs(TOKEN_COMMA);
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+		//}
+		}
+	//}
+	}
+	//atStackEnd(i);
+	atStackEnd(r13);
+	pop r1, r12, r13, r14, r15;
+};
+proc process_inout_directive(i){
+	push r15, r14, r13, r12, r2, r1;
+	r15 = &token_stack;
+	r13 = i;
+	r12 = code;
+	//atStackStart();
+	atStackStart();
+	//TokenIs(TOKEN_PARA_START);
+	TokenIs(TOKEN_PARA_START);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//TokenIsLabelType(TYPE_REG);
+	TokenIsLabelType(TYPE_REG);
+	//if(token_stack[token] != HASH_r3+HASH_OFFSET)
+		//abort_b0("Expected register r3");
+	r14 = token;
+	r1 = [r15+r14*8];
+	r2 = HASH_r3+HASH_OFFSET;
+	if(r1 != r2){
+		abort_b0('Expected register r3');
+	}
+	//token++;
+	r14 = r14 + 1;
+	token = r14;
+	//TokenIs(TOKEN_COMMA);
+	TokenIs(TOKEN_COMMA);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	r1 = [r15+r14*8];
+	r2 = HASH_r0d+HASH_OFFSET;
+	//if((token_stack[token] != HASH_r0+HASH_OFFSET)&&
+		//#ifndef i386
+		//(token_stack[token] != HASH_r0d+HASH_OFFSET)&&
+		//#endif
+		//(token_stack[token] != HASH_r0w+HASH_OFFSET)&&
+		//(token_stack[token] != HASH_r0b+HASH_OFFSET))
+			//abort_b0("Expected register r0");
+	if(r1 != r2){
+		#ifndef i386;
+		r2 = HASH_r0d+HASH_OFFSET;
+		#endif;
+		if(r1 != r2){
+			r2 = HASH_r0w+HASH_OFFSET;
+			if(r1 != r2){
+				r2 = HASH_r0b+HASH_OFFSET;
+				if(r1 != r2){
+					abort_b0('Expected register r0d, r0w or r0b');
+				}
+			}
+		}
+	}
+	r1 = r1 - HASH_OFFSET;
+	r2 = &hash_table[r1].token;
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//TokenIs(TOKEN_PARA_END);
+	TokenIs(TOKEN_PARA_END);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	atStackEnd(r13);
+	//if (token_stack[0] == HASH_in+HASH_OFFSET){
+		//fprintf(code, "\tin %s, r3w\n", hash_table[token_stack[4]-HASH_OFFSET].token);					
+	//} else {
+		//fprintf(code, "\tout r3w, %s\n", hash_table[token_stack[4]-HASH_OFFSET].token);
+	//}
+	r0 = [r15];
+	r1 = HASH_in+HASH_OFFSET;
+	if(r0 == r1){
+		echo_string(r12, '\tin ');
+		echo_string(r12, r2);
+		echo_string(r12, ', r3w\n');
+	} else {
+		echo_string(r12, '\tout r3w, ');
+		echo_string(r12, r2);
+		echo_string(r12, '\n');
+	}
+	pop r1, r2, r12, r13, r14, r15;
+};
+
+proc process_calljmp_directive(i){
+	push r1, r2, r3, r12, r13, r14, r15;
+	r15 = &token_stack;
+	r13 = i;
+	r12 = code;
+	//atStackStart();
+	atStackStart();
+	r14 = token;
+	r1 = [r15+r14*8];
+	r0 = TOKEN_ARRAY_START;
+	//if (token_stack[token] == TOKEN_ARRAY_START){
+	if (r1 == r0){
+		//We must have a global pointer
+		//token++;
+		r14 = r14 + 1;
+		token = r14;
+		//fprintf(code, "\t%s [", hash_table[token_stack[0]-HASH_OFFSET].token);
+		r1 = [r15];
+		r1 = r1 - HASH_OFFSET;
+		r1 = &hash_table[r1].token;
+		echo_string(r12, '\t');
+		echo_string(r12, r1);
+		echo_string(r12, ' qword [');
+		//Global_Pointer(i);
+		Global_Pointer(r13);
+		//TokenIs(TOKEN_ARRAY_END);
+		TokenIs(TOKEN_ARRAY_END);
+		//fprintf(code, "]\n");
+		echo_string(r12, ']\n');
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+	//} else {
+	} else {
+		// We should have a reg or a procedure();
+		//isHash(token_stack[token]);
+		isHash(r1);
+		r1 = r1 - HASH_OFFSET;
+		r2 = &hash_table[r1].token;
+		r3 = hash_table[r1].token_type;
+		r0 = TYPE_REG;
+		r3 = r3 && r0;
+		//if (((hash_table[token_stack[token]-HASH_OFFSET].token_type) & TYPE_REG) == TYPE_REG){
+		if(r3 == r0){
+			// We MUST have a register
+			//TokenIsLabelType(TYPE_REG);
+			TokenIsLabelType(r0);
+			//fprintf(code, "\t%s %s\n", hash_table[token_stack[0]-HASH_OFFSET].token, hash_table[token_stack[token]-HASH_OFFSET].token);
+			echo_string(r12, '\t');
+			r0 = [r15];
+			r0 = r0 - HASH_OFFSET;
+			r0 = &hash_table[r0].token;
+			echo_string(r12, r0);
+			echo_string(r12, ' ');
+			echo_string(r12, r2);
+			echo_string(r12, '\n');
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+		//} else {
+		} else {
+			//We should have a e_proc!
+			//TokenIsLabelType(TYPE_EPROC);
+			TokenIsLabelType(TYPE_EPROC);
+			//if (SOURCE_TYPE != SOURCE_PE){
+				//fprintf(code, "\t%s %s\n", hash_table[token_stack[0]-HASH_OFFSET].token, hash_table[token_stack[token]-HASH_OFFSET].token);
+			//} else {
+				//fprintf(code, "\t%s [%s]\n", hash_table[token_stack[0]-HASH_OFFSET].token, hash_table[token_stack[token]-HASH_OFFSET].token);
+			//}
+			r3 = [r15];
+			r3 = r3 - HASH_OFFSET;
+			r3 = &hash_table[r3].token;
+			r0 = SOURCE_TYPE;
+			r1 = SOURCE_PE;
+			if(r0 != r1){
+				echo_string(r12, '\t');
+				echo_string(r12, r3);
+				echo_string(r12, ' ');
+				echo_string(r12, r2);
+				echo_string(r12, '\n');
+			} else {
+				echo_string(r12, '\t');
+				echo_string(r12, r3);
+				echo_string(r12, ' [');
+				echo_string(r12, r2);
+				echo_string(r12, ']\n');
+			}
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+			//TokenIs(TOKEN_PARA_START);
+			TokenIs(TOKEN_PARA_START);
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+			//TokenIs(TOKEN_PARA_END);
+			TokenIs(TOKEN_PARA_END);
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+		//}
+		}
+	//}
+	}
+	//atStackEnd(i);
+	atStackEnd(r13);
+	pop r15, r14, r14, r12, r3, r2, r1;
+};
+proc process_asm_directive(i){
+	push r1, r2, r3, r4, r13, r14, r15;
+	r15 = i;
+	r13 = code;
+	//atStackStart();
+	atStackStart();
+	//atStackEnd(i);
+	atStackEnd(r15);
+	//if (ch != '{') // Asm statements are to be followed immediately by a block.
+		//abort_b0("{ Expected");
+	r0 = ch;
+	r1 = 07bh;
+	if(r0 != r1){
+		abort_b0('{ Expected');
+	}
+	//getChar();
+	getChar();
+	r3 = look_ahead_ch;
+	r4 = EOF;
+	if (r3 == r4){
+		abort_b0('Unexpected EOF');
+	}
+	//asm_in_string = 0;
+	r14 = 0;
+	r0 = 0;
+	r1 = ch;
+	r2 = 07dh;
+	if (r1 != r2) { r0 = 1; }
+	if (r14) { r0 = 1; }
+	//while ((ch != '}') || (asm_in_string == 1)){
+	while(r0){
+		//if ((ch == '/')&&(asm_in_string == 0)) { // Skip comments
+		r2 = 02fh;
+		r0 = 0;
+		if(r1 == r2){
+			if(r14 == r0){
+				//if (look_ahead_ch == '/'){
+				r0 = look_ahead_ch;
+				if (r0 == r2){
+					r1 = ch;
+					r2 = CHAR_LF;
+					//while (ch != CR){
+						//getChar();
+					//}
+					while(r1 != r2){
+						getChar();
+						r1 = ch;
+						if (r1 == r4){
+							abort_b0('Unexpected EOF');
+						}
+					}
+				//}
+				}
+			}
+		//}
+		}
+		r1 = ch;
+		//fprintf(code, "%c", ch);
+		echo_character(r13, r1);
+		//getChar();
+		getChar();
+		if (r1 == r4){
+			abort_b0('Unexpected EOF');
+		}
+		//if (ch == '\'') {
+			//if (asm_in_string == 1) {
+				//asm_in_string = 0;
+			//} else {
+				//asm_in_string = 1;
+			//}
+		//}
+		r1 = ch;
+		r0 = 27h;
+		if(r1 == r0){
+			if(r14){
+				r14 = 0;
+			} else {
+				r14 = 1;
+			}
+		}
+		r0 = 0;
+		r1 = ch;
+		r2 = 07dh;
+		if (r1 != r2) { r0 = 1; }
+		if (r14) { r0 = 1; }
+	//}
+	}
+	//if(DEBUG)
+		//printf("\n");
+	r0 = DEBUG;
+	if(r0) { echo_string(STDOUT, '\n'); }
+	//block_level--;
+	r0 = block_level;
+	r0 = r0 - 1;
+	block_level = r0;
+	pop r15, r14, r13, r4, r3, r2, r1;
+};
+proc process_token_block_end(i){
+	push r1, r2, r3, r4, r12, r13, r14, r15;
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	r11 = TOKEN_BLOCK_END;
+	//if(DEBUG)
+		//printf("processing TOKEN_END_BLOCK\n");
+	if(r12){
+		echo_string(STDOUT, 'processing TOKEN_END_BLOCK\n');
+	}
+	r0 = 0;
+	r1 = [r15+r14*8];
+	if(r1 == r11) { if (r14 < r13) { r0 = 1; } }
+	while(r0){
+	//while ((token_stack[token] == TOKEN_BLOCK_END) && (token < i)) {
+		//if (DEBUG)
+			//printf("token = %d, i = %d\n", token, i);
+		if(r12){
+			echo_string(STDOUT, 'token = ');
+			echo_integer(STDOUT, r14);
+			echo_string(STDOUT, ', i = ');
+			echo_integer(STDOUT, r13);
+			echo_string(STDOUT, '\nCalling END_BLOCK in while\n');
+		}
+		//if (DEBUG)
+			//printf("Calling END_BLOCK in while\n");
+		r2 = [r15+r14*8+8];
+		r0 = HASH_else+HASH_OFFSET;
+		//if (token_stack[token+1] != HASH_else+HASH_OFFSET) {
+		if(r2 != r0){
+			//end_block();
+			end_block();
+		//} else {
+		} else {
+			//end_block_else();
+			end_block_else();
+			//token++;
+			//token++;
+			r14 = token;
+			r14 = r14 + 2;
+			token = r14;
+			//atStackEnd(i);		// ELSE must ALWAYS be the last token on the stack
+			atStackEnd(r13);
+			//if (ch != '{')		// Check for stack termination character!
+				//abort_b0("Illformed IF-THEN-ELSE statement");
+			r0 = ch;
+			r1 = CHAR_OCPARAN;
+			if(r0 != r1){
+				abort_b0('Illformed IF-THEN-ELSE statement');
+			}
+		//}
+		}
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+		r0 = 0;
+		r1 = [r15+r14*8];
+		if(r1 == r11) { if (r14 < r13) { r0 = 1; } }
+	//}
+	}
+	//if (DEBUG)
+		//printf("token = %d, i = %d\n", token, i);
+	r14 = token;
+	if(r12){
+		echo_string(STDOUT, 'token = ');
+		echo_integer(STDOUT, r14);
+		echo_string(STDOUT, ', i = ');
+		echo_integer(STDOUT, r13);
+		echo_string(STDOUT, '\n');
+	}
+	//if (token < i) {
+	if(r14 < r13){
+		// We have something other than ELSE
+		// Becuase most items need to be at the start, we simply remove all
+		// block ends, and reprocess as per normal.
+		// We lucky becuase token = our first non } character!
+		//j = i - token; // make j our count!
+		r1 = r13 - r14;
+		r2 = 0;
+		while(r2 < r1){
+		//for (k = 0; k < j; k++){
+			// Quick move the stack forward
+			//token_stack[k] = token_stack[token];
+			r0 = [r15+r14*8];
+			[r15+r2*8] = r0;
+			//token++;
+			r14 = r14 + 1;
+			r2 = r2 + 1;
+			token = r14;
+		//}
+		}
+		//token = 0;		// Set our stack pointer to 0
+		token = 0;
+		//i = j;			// Set our new stack size to the count!
+		r13 = r1;
+	//}
+	}
+	//break;
+	r0 = r13;
+	pop r15, r14, r13, r12, r4, r3, r2, r1;
+	return(r0);
+};
+proc process_ifwhile_directive(i){
+	push r1, r2, r3, r4, r5, r10, r11, r12, r13, r14, r15;
+	r11 = code;
+	r13 = i;
+	//if_while_block(i);
+	if_while_block(r13);
+	// Now construct the test!
+	r14 = block_level;
+	r15 = if_while_stack[r14].if_while_test1;
+	r12 = hash_table[r15].token_type;
+	r1 = TYPE_FLAG;
+	//if (hash_table[if_while_stack[block_level].if_while_test1].token_type == TYPE_FLAG) {
+	if(r12 == r1){
+		// We have a flag comparison, so this is really easy.
+		//switch(if_while_stack[block_level].if_while_test1){
+		r0 = HASH_CARRY;
+		if(r15 == r0){
+			//case HASH_CARRY: fprintf(code, "\tjnc .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjnc .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_NOCARRY;
+		if(r15 == r0){
+			//case HASH_NOCARRY: fprintf(code, "\tjc .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjc .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_OVERFLOW;
+		if(r15 == r0){
+			//case HASH_OVERFLOW: fprintf(code, "\tjno .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjno .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_NOOVERFLOW;
+		if(r15 == r0){
+			//case HASH_NOOVERFLOW: fprintf(code, "\tjo .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjo .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_PARITY;
+		if(r15 == r0){
+			//case HASH_PARITY: fprintf(code, "\tjnp .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjnp .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_NOPARITY;
+		if(r15 == r0){
+			//case HASH_NOPARITY: fprintf(code, "\tjp .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjp .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_ZERO;
+		if(r15 == r0){
+			//case HASH_ZERO: 	fprintf(code, "\tjnz .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjnz .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_NOTZERO;
+		if(r15 == r0){
+			//case HASH_NOTZERO: fprintf(code, "\tjz .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjz .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_SIGN;
+		if(r15 == r0){
+			//case HASH_SIGN: 	fprintf(code, "\tjns .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjns .B0_END_BLOCK_0000');
+		} else {
+		r0 = HASH_NOTSIGN;
+		if(r15 == r0){
+			//case HASH_NOTSIGN: fprintf(code, "\tjs .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+			echo_string(r11, '\tjs .B0_END_BLOCK_0000');
+		} else {
+			//default: abort_b0("Unknown CPU FLAG"); break;
+			abort_b0('Unknown CPU FLAG');
+		}}}}}}}}}}
+		r0 = if_while_stack[r14].offset;
+		echo_integer(r11, r0);
+		echo_string(r11, '\n');
+	//} else {
+	} else {
+		// Lets see if this is a FPU or INT operation.
+		r1 = TYPE_REG;
+		//if (hash_table[if_while_stack[block_level].if_while_test1].token_type == TYPE_REG) {
+		if(r12 == r1){
+			// Int test
+			//if ((hash_table[if_while_stack[block_level].if_while_test2].token_type != TYPE_REG) && (if_while_stack[block_level].if_while_test2 != HASH_zero))
+				//abort_b0("Second operand MUST be a integer register");
+			r2 = if_while_stack[r14].if_while_test2;
+			r3 = hash_table[r2].token_type;
+			r4 = HASH_zero;
+			if(r3 != r1){
+				if(r2 != r4){
+					abort_b0('Second operand MUST be a integer register');
+				}
+			}
+			//if (if_while_stack[block_level].if_while_test2 != HASH_zero) {
+			r11 = code;
+			if(r2 != r4){
+				//fprintf(code, "\tcmp %s, %s\n", hash_table[if_while_stack[block_level].if_while_test1].token, hash_table[if_while_stack[block_level].if_while_test2].token );
+				echo_string(r11, '\tcmp ');
+				r0 = &hash_table[r15].token;
+				echo_string(r11, r0);
+				echo_string(r11, ', ');
+				r0 = &hash_table[r2].token;
+				echo_string(r11, r0);
+				echo_string(r11, '\n');
+			//} else {
+			} else {
+				//fprintf(code, "\ttest %s, %s\n", hash_table[if_while_stack[block_level].if_while_test1].token, hash_table[if_while_stack[block_level].if_while_test1].token );
+				echo_string(r11, '\ttest ');
+				r10 = &hash_table[r15].token;
+				echo_string(r11, r10);
+				echo_string(r11, ', ');
+				echo_string(r11, r10);
+				echo_string(r11, '\n');
+			//}
+			}
+			//switch (if_while_stack[block_level].comparison) {
+			r0 = if_while_stack[r14].comparison;
+			r1 = TOKEN_EQUALS;
+			if (r0 == r1){
+				//case TOKEN_EQUALS :	fprintf(code, "\tjne .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjne .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_NOTEQUALS;
+			if(r0 == r1){
+				//case TOKEN_NOTEQUALS : fprintf(code, "\tje .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tje .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_LESSTHAN;
+			if(r0 == r1){
+				//case TOKEN_LESSTHAN : fprintf(code, "\tjae .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjae .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_GREATERTHAN;
+			if(r0 == r1){
+				//case TOKEN_GREATERTHAN : fprintf(code, "\tjbe .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjbe .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_LESSTHANEQUALS;
+			if(r0 == r1){
+				//case TOKEN_LESSTHANEQUALS : fprintf(code, "\tja .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tja .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_GREATERTHANEQUALS;
+			if(r0 == r1){
+				//case TOKEN_GREATERTHANEQUALS : fprintf(code, "\tjb .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjb .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_S_LESSTHAN;
+			if(r0 == r1){
+				//case TOKEN_S_LESSTHAN : fprintf(code, "\tjge .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjge .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_S_GREATERTHAN;
+			if(r0 == r1){
+				//case TOKEN_S_GREATERTHAN : fprintf(code, "\tjle .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjle .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_S_LESSTHANEQUALS;
+			if(r0 == r1){
+				//case TOKEN_S_LESSTHANEQUALS : fprintf(code, "\tjg .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjg .B0_END_BLOCK_0000');
+			} else {
+			r1 = TOKEN_S_GREATERTHANEQUALS;
+			if(r0 == r1){
+				//case TOKEN_S_GREATERTHANEQUALS : fprintf(code, "\tjl .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+				echo_string(r11, '\tjl .B0_END_BLOCK_0000');
+			}}}}}}}}}}
+			//}
+			r0 = if_while_stack[r14].offset;
+			echo_integer(r11, r0);
+			echo_string(r11, '\n');
+		//} else {
+		} else {
+			// FPU test
+			r15 = if_while_stack[r14].if_while_test1;
+			r2 = if_while_stack[r14].if_while_test2;
+			r4 = HASH_zero;
+
+			//if (if_while_stack[block_level].if_while_test2 != HASH_zero){
+			if(r2 != r4){
+				//if (if_while_stack[block_level].if_while_test1 != HASH_fp0)
+					//abort_b0("Floating point comparison requires that fp0 be the first operand");
+				r1 = HASH_fp0;
+				if(r15 != r1){
+					abort_b0('Floating point comparison requires that fp0 be the first operand');
+				}
+				// Non-zero test
+				//if (hash_table[if_while_stack[block_level].if_while_test2].token_type != TYPE_REG_FPU)
+					//abort_b0("Second operand MUST be a FPU register");
+				r10 = hash_table[r2].token_type;
+				r4 = TYPE_REG_FPU;
+				if(r10 != r4){
+					abort_b0('Second operand MUST be a FPU register');
+				}
+				//fprintf(code, "\tfcomi %s\n", hash_table[if_while_stack[block_level].if_while_test2].token );
+				r11 = code;
+				r10 = &hash_table[r2].token;
+				echo_string(r11, '\tfcomi ');
+				echo_string(r11, r10);
+				echo_string(r11, '\n');
+				//switch (if_while_stack[block_level].comparison) {
+				r1 = if_while_stack[r14].comparison;
+				r0 = TOKEN_EQUALS;
+				if(r1 == r0){
+					//case TOKEN_EQUALS :	fprintf(code, "\tjne .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjne .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_NOTEQUALS;
+				if(r1 == r0){
+					//case TOKEN_NOTEQUALS : fprintf(code, "\tje .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tje .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_LESSTHAN;
+				if(r1 == r0){
+					//case TOKEN_LESSTHAN : fprintf(code, "\tjae .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjae .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_GREATERTHAN;
+				if(r1 == r0){
+					//case TOKEN_GREATERTHAN : fprintf(code, "\tjbe .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjbe .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_LESSTHANEQUALS;
+				if(r1 == r0){
+					//case TOKEN_LESSTHANEQUALS : fprintf(code, "\tja .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tja .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_GREATERTHANEQUALS;
+				if(r1 == r0){
+					//case TOKEN_GREATERTHANEQUALS : fprintf(code, "\tjb .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjb .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_S_LESSTHAN;
+				if(r1 == r0){
+					//case TOKEN_S_LESSTHAN : fprintf(code, "\tjae .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjae .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_S_GREATERTHAN;
+				if(r1 == r0){
+					//case TOKEN_S_GREATERTHAN : fprintf(code, "\tjbe .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjbe .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_S_LESSTHANEQUALS;
+				if(r1 == r0){
+					//case TOKEN_S_LESSTHANEQUALS : fprintf(code, "\tja .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tja .B0_END_BLOCK_0000');
+				} else {
+				r0 = TOKEN_S_GREATERTHANEQUALS;
+				if(r1 == r0){
+					//case TOKEN_S_GREATERTHANEQUALS : fprintf(code, "\tjb .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset); break;
+					echo_string(r11, '\tjb .B0_END_BLOCK_0000');
+				}}}}}}}}}}
+				r0 = if_while_stack[r14].offset;
+				echo_integer(r11, r0);
+				echo_string(r11, '\n');
+				//}
+			//} else {
+			} else {
+				// Handle test against zero
+				//if (hash_table[if_while_stack[block_level].if_while_test1].token_type != TYPE_REG_FPU)
+					//abort_b0("Operand MUST be a register");
+				r1 = TYPE_REG_FPU;
+				if(r12 != r1){
+					abort_b0('Operand MUST be a register');
+				}
+				//fprintf(code, "\tfldz\n\tfcomip ");
+				r11 = code;
+				echo_string(r11, '\tfldz\n\tfcomip ');
+				//switch(if_while_stack[block_level].if_while_test1){
+				r0 = HASH_fp0;
+				if(r15 == r0){
+					//case HASH_fp0: fprintf(code, "fp1\n"); break;
+					echo_string(r11, 'fp1\n');
+				} else {
+				r0 = HASH_fp1;
+				if(r15 == r0){
+					//case HASH_fp1: fprintf(code, "fp2\n"); break;
+					echo_string(r11, 'fp2\n');
+				} else {
+				r0 = HASH_fp2;
+				if(r15 == r0){
+					//case HASH_fp2: fprintf(code, "fp3\n"); break;
+					echo_string(r11, 'fp3\n');
+				} else {
+				r0 = HASH_fp3;
+				if(r15 == r0){
+					//case HASH_fp3: fprintf(code, "fp4\n"); break;
+					echo_string(r11, 'fp4\n');
+				} else {
+				r0 = HASH_fp4;
+				if(r15 == r0){
+					//case HASH_fp4: fprintf(code, "fp5\n"); break;
+					echo_string(r11, 'fp5\n');
+				} else {
+				r0 = HASH_fp5;
+				if(r15 == r0){
+					//case HASH_fp5: fprintf(code, "fp6\n"); break;
+					echo_string(r11, 'fp6\n');
+				} else {
+				r0 = HASH_fp6;
+				if(r15 == r0){
+					//case HASH_fp6: fprintf(code, "fp7\n"); break;
+					echo_string(r11, 'fp7\n');
+				} else {
+				r0 = HASH_fp7;
+				if(r15 == r0){
+					//case HASH_fp7: abort_b0("Error FPU stack overflow in IF-THEN construct"); break;
+					abort_b0('Error FPU stack overflow in IF-THEN construct');
+				}}}}}}}}
+				//}
+				//fprintf(code, "\tje .B0_END_BLOCK_0000%d\n", if_while_stack[block_level].offset);
+				echo_string(r11, '\tje .B0_END_BLOCK_0000');
+				r0 = if_while_stack[r14].offset;
+				echo_integer(r11, r0);
+				echo_string(r11, '\n');
+			//}
+			}
+		//}
+		}
+	//}
+	}
+	//if ((token_stack[0]-HASH_OFFSET) == HASH_while) 	// Now set the return point.
+		//fprintf(code, "\t.B0_END_BLOCK_0000%d:\n", (if_while_stack[block_level].offset-1));
+	r15 = &token_stack;
+	r0 = [r15];
+	r1 = HASH_while+HASH_OFFSET;
+	if(r0 == r1){
+		r11 = code;
+		echo_string(r11, '\t.B0_END_BLOCK_0000');
+		r0 = block_level;
+		r1 = if_while_stack[r0].offset;
+		r1 = r1 - 1;
+		echo_integer(r11, r1);
+		echo_string(r11, ':\n');
+	}
+	//break;
+	pop r15, r14, r13, r12, r11, r10, r5, r4, r3, r2, r1;
+};
+
+proc process_proc_directive(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12 ,r13, r14, r15;
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	//atStackStart();
+	atStackStart();
+	//if(DEBUG)
+		//printf("Defining proc2\n");
+	if(r12){ echo_string(STDOUT, 'Defining proc1\n'); }
+	//if (ch != '{')	// Proc decl statements are to be followed immediately by a block.
+		//abort_b0("{ Expected");
+	r0 = ch;
+	r1 = CHAR_OCPARAN;
+	if(r0 != r1){
+		abort_b0('{ Expected');
+	}
+	//isHash(token_stack[token]);
+	r14 = token;
+	r1 = [r15+r14*8];
+	isHash(r1);
+	//if (global != 0) 
+		//abort_b0("Unable to nest proc definitions");
+	r0 = global;
+	r2 = 0;
+	if(r0 != r2){ 
+		r2 = global;
+		r2 = r2 - HASH_OFFSET;
+		r1 = &hash_table[r2].token;
+		echo_string(STDOUT, 'Global = ');
+		echo_string(STDOUT, r1);
+		echo_string(STDOUT, '\n');
+		abort_b0('Unable to nest proc definitions'); 
+	}
+	//global = token_stack[token];
+	global = r1;
+	//if (hash_table[(global-HASH_OFFSET)].token_type == 0) {
+		//hash_table[(global-HASH_OFFSET)].token_type = TYPE_PROC;
+	//} else {
+		//abort_b0("Unable to redeclare procedure?");
+	//}
+	r2 = r1 - HASH_OFFSET;
+	r0 = 0;
+	r3 = hash_table[r2].token_type;
+	if(r3 == r0){
+		hash_table[r2].token_type = TYPE_PROC;
+	} else {
+		abort_b0('Unable to redeclare procedure?');
+	}
+	r3 = &hash_table[r2].token;
+	//fprintf(code, "\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n");
+	//fprintf(code, "; %s Function Code;\n", hash_table[(global-HASH_OFFSET)].token);
+	//fprintf(code, ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n");				
+	//fprintf(data, "\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n");
+	//fprintf(data, "; %s Function Variables ;\n", hash_table[(global-HASH_OFFSET)].token);
+	//fprintf(data, ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n");
+	//fprintf(bss,  "\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n");
+	//fprintf(bss,  "; %s Function BSS Variables ;\n", hash_table[(global-HASH_OFFSET)].token);
+	//fprintf(bss,  ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n");
+	//fprintf(code, "align 8\n");
+	//fprintf(code, "_B0_%s:\n", hash_table[(global-HASH_OFFSET)].token);
+	r11 = code;
+	echo_string(r11, '\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n; ');
+	echo_string(r11, r3);
+	echo_string(r11, ' Function Code ;\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\nalign 8\n_B0_');
+	echo_string(r11, r3);
+	echo_string(r11, ':\n');
+	r11 = data;
+	echo_string(r11, '\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n; ');
+	echo_string(r11, r3);
+	echo_string(r11, ' Function Variables ;\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n');
+	r11 = bss;
+	echo_string(r11, '\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n; ');
+	echo_string(r11, r3);
+	echo_string(r11, ' Function BSS Variables ;\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\n\n');
+	//local_var_offset = 0;
+
+	//if(DEBUG)
+		//printf("Defining proc2\n");
+	if(r12) { echo_string(STDOUT, 'Defining proc - '); echo_string(STDOUT, r3); echo_string(STDOUT, '\n'); }
+
+	local_var_offset = 0;
+	// Now clean up the hash table of all local variables.
+	r1 = 0;
+	r2 = HASH_TABLE_SIZE;
+	//for (j = 0; j < HASH_TABLE_SIZE; j++) {
+	while(r1 < r2){
+		r3 = hash_table[r1].token_type;
+		r3 = r3 && TYPE_LOCAL;
+		//if ((hash_table[j].token_type & (TYPE_LOCAL)) > 0 ){
+		if(r3){
+			//if(DEBUG)
+				//printf("Erasing 0x%x -> 0x%lx = %s ,Type: 0x%x\n", j, hash_table[j].hash, hash_table[j].token, hash_table[j].token_type);
+			if(r12){
+				echo_string(STDOUT, 'Erasing ');
+				echo_hex(STDOUT, r1);
+				echo_string(STDOUT, ' -> ');
+				r0 = hash_table[r1].hash;
+				echo_hex(STDOUT, r0);
+				echo_string(STDOUT, ' = ');
+				r0 = &hash_table[r1].token;
+				echo_string(STDOUT, r0);
+				echo_string(STDOUT, ' ,Type: ');
+				r0 = hash_table[r1].token_type;
+				echo_hex(STDOUT, r0);
+				echo_string(STDOUT, '\n');
+			}
+			//hash_table[j].token_type = 0;
+			hash_table[r1].token_type = 0;
+			//hash_table[j].local_offset = 0;
+			hash_table[r1].local_offset = 0;
+		//}
+		}
+		r1 = r1 + 1;
+	//};
+	}
+	// Now process the parameters
+	// token should be on the proc
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	// move to the first para?
+	//TokenIs(TOKEN_PARA_START);
+	TokenIs(TOKEN_PARA_START);
+	//token++; // Lets see what we are testing?
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	r1 = [r15+r14*8];
+	r2 = TOKEN_PARA_END;
+	//if (token_stack[token] == TOKEN_PARA_END) {
+	if (r1 == r2){
+		// I guess we have no parameters.
+		//token++;
+		r14 = r14 + 1;
+		token = r14;
+		//atStackEnd(i);
+		atStackEnd(r13);
+		//hash_table[(global-HASH_OFFSET)].local_offset = local_var_offset;
+		r0 = global;
+		r0 = r0 - HASH_OFFSET;
+		r1 = local_var_offset;
+		hash_table[r0].local_offset = r1;
+		//if(DEBUG)
+			//printf("Proc defined - no variables\n");
+		//break;	// Let's get outa here!
+		if(r12){
+			echo_string(STDOUT, 'Proc defined - no variables\n');
+		} 
+		pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+		return();
+	}
+	//}
+	// Alrightly all proc parameters are type m64 so this going to be a bit easier?
+	//while(token_stack[token] != TOKEN_PARA_END) {
+	while(r1 != r2){
+		//IsLabelAllocated();
+		IsLabelAllocated();
+		//#ifndef i386
+		//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M64+TYPE_LOCAL;
+		//#else
+		//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M32+TYPE_LOCAL;
+		//#endif
+		r3 = [r15+r14*8];
+		r3 = r3 - HASH_OFFSET;
+		#ifndef i386;
+		hash_table[r3].token_type = TYPE_M64+TYPE_LOCAL;
+		#else;
+		hash_table[r3].token_type = TYPE_M32+TYPE_LOCAL;
+		#endif;
+		//hash_table[(global-HASH_OFFSET)].local_offset = local_var_offset;
+		r4 = local_var_offset;
+		r5 = global;
+		r5 = r5 - HASH_OFFSET;
+		hash_table[r5].local_offset = r4;
+		//fprintf(data, "_B0_%s_%s equ %d\n", hash_table[(global-HASH_OFFSET)].token, hash_table[(token_stack[token]-HASH_OFFSET)].token , local_var_offset);
+		r11 = data;
+		echo_string(r11, '_B0_');
+		r0 = &hash_table[r5].token;
+		echo_string(r11, r0);
+		echo_string(r11, '_');
+		r0 = &hash_table[r3].token;
+		echo_string(r11, r0);
+		echo_string(r11, ' equ ');
+		echo_integer(r11, r4);
+		echo_string(r11, '\n');
+	//#ifndef i386
+		//local_var_offset += 8;
+	//#else
+		//local_var_offset += 4;
+	//#endif
+		#ifndef i386;
+		r4 = r4 + 8;
+		#else;
+		r4 = r4 + 4;
+		#endif;
+		local_var_offset = r4;
+		//token++;
+		r14 = r14 + 1;
+		token = r14;
+		r1 = [r15+r14*8];
+		r8 = TOKEN_COMMA;
+		//if(token_stack[token] == TOKEN_COMMA)
+			//token++;
+		if(r1 == r8){
+			r14 = r14 + 1;
+			token = r14;
+			r1 = [r15+r14*8];
+		}
+	//}
+	}
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	atStackEnd(r13);
+	//if(DEBUG)
+		//printf("Proc defined - variables defined\n");
+	if(r12){
+		echo_string(STDOUT, 'Proc defined - variables defined\n');
+	}
+	//break;
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+};
+proc process_data_directive(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12 ,r13, r14, r15;
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	r11 = global;
+	r10 = &token_buffer;
+	r9 = toki;
+	//if(DEBUG)
+		//printf("Processing Variable Def\n");
+	if(r12){
+		echo_string(STDOUT, 'Processing Variable Def\n');
+	}
+	//atStackStart();
+	atStackStart();
+	r14 = token;
+	r0 = 0;
+	//if (global == 0) {
+	if(r11 == r0){
+		//if (token_stack[token] == TOKEN_ARRAY_START) {
+		r1 = [r15+r14*8];
+		r2 = TOKEN_ARRAY_START;
+		if (r1 == r2){
+			// This gets a little complicated?
+			//toki = 0;
+			//token++;
+			//while (token_stack[token] != TOKEN_ARRAY_END) {
+				//token_buffer[toki] = (unsigned char)token_stack[token];
+				//token_buffer[toki+1] = '\0';
+				//toki++;
+				//token++;
+				//if (toki >= TOKEN_MAX_SIZE) abort_b0("INTERNAL: Token Preprocessor Buffer Overflow! - Increase TOKEN_MAX_SIZE");
+			//}
+			r9 = 0;
+			r8 = r9;
+			r5 = TOKEN_MAX_SIZE;
+			[r10] = r9w;
+			r9 = r9 + 2;
+			r14 = r14 + 1;
+			token = r14;
+			r0 = [r15+r14*8];
+			r1 = TOKEN_ARRAY_END;
+			while (r0 != r1){
+				[r10+r9] = r0b;
+				[r10+r9+1] = r8b;
+				r9 = r9 + 1;
+				r14 = r14 + 1;
+				token = r14;
+				if(r9 >= r5){
+					abort_b0('INTERNAL: Token Preprocessor Buffer Overflow! - Increase TOKEN_MAX_SIZE');
+				}
+				r0 = [r15+r14*8];
+			}
+			//token++; // Skip end of array size indicator.
+			r14 = r14 + 1;
+			token = r14;
+			//isHash(token_stack[token]);
+			r2 = [r15+r14*8];
+			isHash(r2);
+			r8 = bss;
+			r2 = r2 - HASH_OFFSET;
+			r3 = &hash_table[r2].token;
+			r0 = [r15];
+			r1 = HASH_m8+HASH_OFFSET;
+			//switch (token_stack[0]) {
+			if(r0 == r1){
+				//case HASH_m8+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rb %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token , token_buffer);
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M8+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rb ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M8+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+			
+			r1 = HASH_m16+HASH_OFFSET;
+			if (r0 == r1){
+				//case HASH_m16+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rw %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M16+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rw ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M16+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+			
+			r1 = HASH_m32+HASH_OFFSET;
+			if (r0 == r1){
+				//case HASH_m32+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rd %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M32+TYPE_ARRAY+TYPE_GLOBAL;
+					///break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rd ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M32+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+			
+			#ifndef i386;
+			r1 = HASH_m64+HASH_OFFSET;
+			#else;
+			r1 = HASH_m32+HASH_OFFSET;
+			#endif;
+			if (r0 == r1){
+			//#ifndef i386
+				//case HASH_m64+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rq %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M64+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+			//#endif
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rq ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M64+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+			
+			r1 = HASH_f32+HASH_OFFSET;
+			if (r0 == r1){
+				//case HASH_f32+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rd %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F32+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rd ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F32+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+			
+			r1 = HASH_f64+HASH_OFFSET;
+			if (r0 == r1){
+				//case HASH_f64+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rq %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F64+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rq ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F64+TYPE_ARRAY+TYPE_GLOBAL;
+			} else {
+				//case HASH_f80+HASH_OFFSET :
+					//fprintf(bss, "_B0_%s rt %s\n", hash_table[(token_stack[token]-HASH_OFFSET)].token, token_buffer );
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F80+TYPE_ARRAY+TYPE_GLOBAL;
+					//break;
+				echo_string(r8, '_B0_');
+				echo_string(r8, r3);
+				echo_string(r8, ' rt ');
+				echo_string(r8, r10);
+				echo_string(r8 ,'\n');
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F80+TYPE_ARRAY+TYPE_GLOBAL;
+				}}}}}}
+			//}
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+			//atStackEnd(i);
+			atStackEnd(r13);
+		//} else {
+		} else {
+			//isHash(token_stack[token]);
+			r2 = [r15+r14*8];
+			isHash(r2);
+			r2 = r2 - HASH_OFFSET;
+			r3 = &hash_table[r2].token;
+			r1 = r14 - 1;
+			r0 = [r15+r1*8];
+			r1 = HASH_m8+HASH_OFFSET;
+			
+			//switch (token_stack[token-1]) {
+			if(r0 == r1){
+				//case HASH_m8+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s db ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rb 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M8+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' db ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rb 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M8+TYPE_GLOBAL;
+			} else {
+				
+			r1 = HASH_m16+HASH_OFFSET;
+			if(r0 == r1){
+				//case HASH_m16+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dw ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rw 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M16+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dw ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rw 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M16+TYPE_GLOBAL;
+			} else {
+				
+			r1 = HASH_m32+HASH_OFFSET;
+			if(r0 == r1){
+				//case HASH_m32+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dd ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					///} else {
+						//fprintf(bss, "_B0_%s rd 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M32+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dd ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rd 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M32+TYPE_GLOBAL;
+			} else {
+				
+			#ifndef i386;
+			r1 = HASH_m64+HASH_OFFSET;
+			#else;
+			r1 = HASH_m32+HASH_OFFSET;
+			#endif;
+			if(r0 == r1){
+			//#ifndef i386
+				//case HASH_m64+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dq ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rq 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M64+TYPE_GLOBAL;
+					//break;
+			//#endif
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dq ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rq 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_M64+TYPE_GLOBAL;
+			} else {
+				
+			r1 = HASH_f32+HASH_OFFSET;
+			if(r0 == r1){
+				//case HASH_f32+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dd ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rd 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F32+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dd ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rd 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F32+TYPE_GLOBAL;
+			} else {
+				
+			r1 = HASH_f64+HASH_OFFSET;
+			if(r0 == r1){
+				//case HASH_f64+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dq ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rq 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F64+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dq ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rq 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F64+TYPE_GLOBAL;
+			} else {
+				//case HASH_f80+HASH_OFFSET :
+					//if ((token+1)!=i){
+						//fprintf(data, "_B0_%s dt ", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//} else {
+						//fprintf(bss, "_B0_%s rt 1\n", hash_table[(token_stack[token]-HASH_OFFSET)].token );
+					//}
+					//IsLabelAllocated();
+					//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F80+TYPE_GLOBAL;
+					//break;
+				r1 = r14 + 1;
+				//r0 = [r15+r14*8];
+				if (r1 != r13){
+					r8 = data;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' dt ');
+				} else {
+					r8 = bss;
+					echo_string(r8, '_B0_');
+					echo_string(r8, r3);
+					echo_string(r8, ' rt 1\n');
+				}
+				IsLabelAllocated();
+				hash_table[r2].token_type = TYPE_F80+TYPE_GLOBAL;
+				}}}}}}
+			//}
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+			//if (token != i) {
+			if(r14 != r13){
+				r8 = data;
+				// We have tokens that follow?
+				//TokenIs(TOKEN_EQUATE);
+				TokenIs(TOKEN_EQUATE);
+				//token++;
+				r14 = r14 + 1;
+				token = r14;
+				//while (token < i){
+				while (r14 < r13){
+					r1 = [r15+r14*8];
+					r0 = TOKEN_STRING;
+					//if (token_stack[token] == TOKEN_STRING) {
+					if(r0 == r1){
+						//TokenIs(TOKEN_STRING);
+						TokenIs(TOKEN_STRING);
+						//token++;
+						r14 = r14 + 1;
+						token = r14;
+						//if ((token_stack[token-4] == HASH_f32+HASH_OFFSET) ||
+							//(token_stack[token-4] == HASH_f64+HASH_OFFSET) ||
+							//(token_stack[token-4] == HASH_f80+HASH_OFFSET))
+							//abort_b0("Strings cannot be encoded using f32, f64 or f80.");
+						r0 = 0;
+						r2 = [r15+r14*8-32];
+						r3 = HASH_f32+HASH_OFFSET;
+						if (r2 == r3) { r0 = 1; }
+						r3 = HASH_f64+HASH_OFFSET;
+						if (r2 == r3) { r0 = 1; }
+						r3 = HASH_f80+HASH_OFFSET;
+						if (r2 == r3) { r0 = 1; }
+						if(r0){
+							abort_b0('Strings cannot be encoded using f32, f64 or f80.');
+						}
+						// Before outputing the string, lets find the length of the string.
+						//j = 0;
+						r5 = 0;
+						//while (token_stack[token] != TOKEN_END_STRING){
+							//j++;
+							//token++;
+						//}
+						r3 = r14;
+						r0 = [r15+r3*8];
+						r2 = TOKEN_END_STRING;
+						r4 = TOKEN_MAX_SIZE;
+						while (r0 != r2){
+							r5 = r5 + 1;
+							r3 = r3 + 1;
+							r0 = [r15+r3*8];
+							if(r3 >= r4){ abort_b0('INTERNAL: Token Preprocessor Buffer Overflow! - Increase TOKEN_MAX_SIZE'); }
+						}
+						//token = token - j; // Reset the token back to it's correct value
+						r0 = UTF8_STRINGS;
+						r1 = 0;
+						//if (UTF8_STRINGS == 0){
+						if(r0 == r1){
+							//if (token_stack[token-4] == HASH_m8+HASH_OFFSET)
+								//abort_b0("To enable UTF8 encoded strings, please use the -UTF8 switch or\n #COMPILER_OPTION directive");
+							r2 = [r15+r14*8-32];
+							r3 = HASH_m8+HASH_OFFSET;
+							if(r2 == r3){
+								abort_b0('To enable UTF8 encoded strings, please use the -UTF8 switch or\n #COMPILER_OPTION directive');
+							}
+							//fprintf(data, "0%xh,0%xh,", j, j);
+							echo_hex(r8, r5);
+							echo_string(r8, ',');
+							echo_hex(r8, r5);
+							echo_string(r8, ',');
+							//outputString(i);
+							outputString(r13);
+						//} else {
+						} else {
+							//j = 0;
+							r5 = 0;
+							//k = token;
+							r3 = r14;
+							r2 = TOKEN_END_STRING;
+							r0 = [r15+r3*8];
+							//while (token_stack[token] != TOKEN_END_STRING){
+							while(r0 != r2){
+								r1 = 080h;
+								//if (token_stack[token] < 0x80) {
+									//j++;
+								if(r0 < r1){
+									r5 = r5 + 1;
+								//} else {
+								} else {
+									r1 = 0800h;
+									//if (token_stack[token] < 0x800) {
+									if(r0 < r1){
+										// 2 byte encoding
+										//j = j+2;
+										r5 = r5 + 2;
+									//} else {
+									} else {
+										r1 = 010000h;
+										//if (token_stack[token] < 0x10000){
+										if(r0 < r1){
+											// 3 byte encoding
+											//j = j+3;
+											r5 = r5 + 3;
+										//} else {
+										} else {
+											// 4 byte encoding
+											//j = j+4;
+											r5 = r5 + 4;
+										//}
+										}
+									//}
+									}
+								//}
+								}
+								//token++;
+								r3 = r3 + 1;
+								r0 = [r15+r3*8];
+							//}
+							}
+							//token = k; // Reset the token back to it's correct value
+							r1 = 256;
+							//if (j > 256){
+							if(r5 > r1){
+								//if(HeaderPrinted == 0)
+									//PrintHeader();
+								//printf("WARNING: String is too long for UTF8 encoding, setting length marker to 255\n");
+								//printf("Filename: %s Line: %d.\n",file[file_stack_ptr].filename, (file[file_stack_ptr].line_count));
+								//j = 255;
+								r1 = 0;
+								r0 = WarningsDisabled;
+								if(r1 == r0){
+									r0 = HeaderPrinted;
+									r1 = 0;
+									if(r0 == r1){
+										PrintHeader();
+									}
+									echo_string(STDOUT, 'WARNING: String is too long for UTF8 encoding, setting length marker to 255\n');
+									echo_string(STDOUT, 'Filename: ');
+									r0 = file_stack_ptr;
+									r0 = &file[r0].filename;
+									echo_string(STDOUT, r0);
+									echo_string(STDOUT, ' Line: ');
+									r0 = file_stack_ptr;
+									r0 = file[r0].line_count;
+									echo_integer(STDOUT, r0);
+									echo_string(STDOUT, '\n');
+								}
+								r5 = 255;
+							//};
+							}
+							//fprintf(data, "0%xh,0%xh,", j, j);
+							echo_hex(r8, r5);
+							echo_string(r8, ',');
+							echo_hex(r8, r5);
+							echo_string(r8, ',');
+							//outputStringUTF8(i);
+							outputStringUTF8(r13);
+						//}
+						}
+						//TokenIs(TOKEN_END_STRING);
+						TokenIs(TOKEN_END_STRING);
+						//token++;
+						r14 = token;
+						r14 = r14 + 1;
+						token = r14;
+					//} else {
+					} else {
+						//if (token_stack[token] == TOKEN_MINUS){
+							//fprintf(data, "-");
+							//token++;
+						//}
+						r14 = token;
+						r0 = [r15+r14*8];
+						r1 = TOKEN_MINUS;
+						if(r0 == r1){
+							echo_string(r8, '-');
+							r14 = r14 + 1;
+							token = r14;
+							r0 = [r15+r14*8];
+						}
+						r1 = TOKEN_OFFSET;
+						//if (token_stack[token] > TOKEN_OFFSET)
+							//abort_b0("Immediate Expected");
+						if(r0 > r1){
+							abort_b0('Immediate Expected');
+						}
+						//switch(token_stack[0]) {
+							//case HASH_m8+HASH_OFFSET :
+							//case HASH_m16+HASH_OFFSET :
+							//case HASH_m32+HASH_OFFSET :
+						//#ifndef i386
+							//case HASH_m64+HASH_OFFSET :
+						//#endif
+										//outputNumberD(i, NUM_INTEGER);
+										//break;
+							//case HASH_f32+HASH_OFFSET :
+							//case HASH_f64+HASH_OFFSET :
+							//case HASH_f80+HASH_OFFSET :
+										//outputNumberD(i, NUM_DECIMAL);
+										//break;
+						//}
+						r2 = [r15];
+						r1 = HASH_m8+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_INTEGER, r8); } else {
+						r1 = HASH_m16+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_INTEGER, r8); } else {
+						r1 = HASH_m32+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_INTEGER, r8); } else {
+						#ifndef i386;
+						r1 = HASH_m64+HASH_OFFSET;
+						#endif;
+						if (r2 == r1) { outputNumber(r13, NUM_INTEGER, r8); } else {
+						r1 = HASH_f32+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_DECIMAL, r8); } else {
+						r1 = HASH_f64+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_DECIMAL, r8); } else {
+						r1 = HASH_f80+HASH_OFFSET;
+						if (r2 == r1) { outputNumber(r13, NUM_DECIMAL, r8); }
+						}}}}}}
+						
+					//}
+					}
+					
+					//if((token_stack[token] == TOKEN_COMMA) && (token != i)){
+						//fprintf(data, ",");
+						//token++;
+					//}
+					r14 = token;
+					r0 = [r15+r14*8];
+					r1 = TOKEN_COMMA;
+					if(r0 == r1){
+						if(r14 != r13){
+							echo_string(r8, ',');
+							r14 = r14 + 1;
+							token = r14;
+						}
+					}
+				//}
+				}
+				//fprintf(data, "\n");
+				echo_string(r8, '\n');
+			//}
+			}
+			//atStackEnd(i);
+			atStackEnd(r13);
+		//}
+		}
+	//} else {
+	} else {
+		// We have a local, and global -> current proc
+		r1 = [r15+r14*8];
+		r2 = TOKEN_ARRAY_START;
+		if (r1 == r2){
+		//if (token_stack[token] == TOKEN_ARRAY_START) {
+			// This gets a little complicated?
+			//toki = 0;
+			//token++;
+			r9 = 0;
+			r4 = r9;
+			r14 = r14 + 1;
+			token = r14;
+			//if (token_stack[token] == TOKEN_ARRAY_END)
+				//abort_b0("Unexpected ]");
+			r1 = [r15+r14*8];
+			r0 = TOKEN_ARRAY_END;
+			if(r1 == r0){
+				abort_b0('Unexpected ]');
+			}
+			[r10] = r9w;
+			r9 = r9 + 2;
+			//while (token_stack[token] != TOKEN_ARRAY_END) {
+			while(r1 != r0){
+				//if(token_stack[token] > TOKEN_OFFSET)
+					//abort_b0("Immediate value expected");
+				r3 = TOKEN_OFFSET;
+				if(r1 > r3){
+					abort_b0('Immediate value expected');
+				}
+				//token_buffer[toki] = (unsigned char)token_stack[token];
+				//token_buffer[toki+1] = '\0';
+				[r10+r9] = r1b;
+				[r10+r9+1] = r4b;
+				//toki++;
+				//token++;
+				r9 = r9 + 1;
+				r14 = r14 + 1;
+				r1 = [r15+r14*8];
+				r5 = TOKEN_MAX_SIZE;
+				//if (toki >= TOKEN_MAX_SIZE) abort_b0("INTERNAL: Token Preprocessor Buffer Overflow! - Increase TOKEN_MAX_SIZE");
+				if (r9 >= r5){
+					abort_b0('INTERNAL: Token Preprocessor Buffer Overflow! - Increase TOKEN_MAX_SIZE');
+				}
+			//}
+			}
+			//token++; // Skip end of array size indicator.
+			r14 = r14 + 1;
+			token = r14;
+		//} else {
+		} else {
+			//token_buffer[0] = '1';
+			//token_buffer[1] = 0;
+			r2 = CHAR_1;
+			[r10] = r0w;
+			[r10+2] = r2b;
+			[r10+3] = r0b;
+		//}
+		}
+		//token buffer is our size in ASCII
+		//isHash(token_stack[token]);
+		r1 = [r15+r14*8];
+		isHash(r1);
+		//fprintf(data, "_B0_%s_%s equ %d\n", hash_table[(global-HASH_OFFSET)].token, hash_table[(token_stack[token]-HASH_OFFSET)].token , local_var_offset);
+		r8 = data;
+		echo_string(r8, '_B0_');
+		r0 = r11 - HASH_OFFSET;
+		r0 = &hash_table[r0].token;
+		echo_string(r8, r0);
+		echo_string(r8, '_');
+		r0 = r1 - HASH_OFFSET;
+		r0 = &hash_table[r0].token;
+		echo_string(r8, r0);
+		echo_string(r8, ' equ ');
+		r0 = local_var_offset;
+		echo_integer(r8, r0);
+		echo_string(r8, '\n');
+		//switch (token_stack[0]) {
+		r1 = [r15];
+		r0 = HASH_m8+HASH_OFFSET;
+		if(r1 == r0){
+			//case HASH_m8+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer));
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M8+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_M8+TYPE_LOCAL;
+		} else {
+			
+		r0 = HASH_m16+HASH_OFFSET;
+		if(r1 == r0){
+			//case HASH_m16+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 2);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M16+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r0 = r0 << 1;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_M16+TYPE_LOCAL;
+		} else {
+			
+		r0 = HASH_m32+HASH_OFFSET;
+		if(r1 == r0){
+			//case HASH_m32+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 4);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M32+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r0 = r0 << 2;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_M32+TYPE_LOCAL;
+		} else {
+			
+		#ifndef i386;
+		r0 = HASH_m64+HASH_OFFSET;
+		#else;
+		r0 = HASH_m32+HASH_OFFSET;
+		#endif;
+		if(r1 == r0){
+		//#ifndef i386
+			//case HASH_m64+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 8);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_M64+TYPE_LOCAL;
+				//break;
+		//#endif
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r0 = r0 << 3;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_M64+TYPE_LOCAL;
+		} else {
+			
+		r0 = HASH_f32+HASH_OFFSET;
+		if(r1 == r0){
+			//case HASH_f32+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 4);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F32+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r0 = r0 << 2;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_F32+TYPE_LOCAL;
+		} else {
+			
+		r0 = HASH_f64+HASH_OFFSET;
+		if(r1 == r0){
+			//case HASH_f64+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 8);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F64+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			r0 = r0 << 3;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_F64+TYPE_LOCAL;
+		} else {
+			// case HASH_f80+HASH_OFFSET :
+				//IsLabelAllocated();
+				//local_var_offset = local_var_offset + (dhtoi(token_buffer) * 10);
+				//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_F80+TYPE_LOCAL;
+				//break;
+			IsLabelAllocated();
+			r0 = dhtoi(r10);
+			asm {
+				lea r0, [r0+r0*4] // multiple by 5.
+			}
+			r0 = r0 << 1;
+			r1 = local_var_offset;
+			r0 = r0 + r1;
+			local_var_offset = r0;
+			r0 = [r15+r14*8];
+			r0 = r0 - HASH_OFFSET;
+			hash_table[r0].token_type = TYPE_F80+TYPE_LOCAL;
+		//}
+		}}}}}}
+		//set the used stack frame for the current proc.
+		//hash_table[(global-HASH_OFFSET)].local_offset = local_var_offset;
+		r1 = global;
+		r1 = r1 - HASH_OFFSET;
+		r0 = local_var_offset;
+		hash_table[r1].local_offset = r0;
+		//token++;
+		r14 = token;
+		r14 = r14 + 1;
+		token = r14;
+		//atStackEnd(i);
+		atStackEnd(r13);
+	//}
+	}
+	//if(DEBUG)
+		//printf("End Processing Variable Def\n");
+	if(r12){
+		echo_string(STDOUT, 'End Processing Variable Def\n');
+	}
+	//break;
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+};
+
+proc process_struc_directive(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12 ,r13, r14, r15;
+	m64 exit_struc;
+	
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	//atStackStart();
+	atStackStart();
+	//IsLabelAllocated();
+	IsLabelAllocated();
+	//hash_table[(token_stack[token]-HASH_OFFSET)].token_type = TYPE_STRUC;
+	r14 = token;
+	r1 = [r15+r14*8];
+	r1 = r1 - HASH_OFFSET;
+	hash_table[r1].token_type = TYPE_STRUC;
+	//hash_table[(token_stack[token]-HASH_OFFSET)].local_offset = 0; // At entry 0 into structure's structure.
+	hash_table[r1].local_offset = 0;
+	//struc_def = token_stack[token]-HASH_OFFSET;
+	struc_def = r1;
+	//hash_table[struc_def].struc_ptr = calloc(1, sizeof(struc_struc));
+	r2 = _calloc(1, STRUC_SIZE * STRUC_ENTRY_SIZE);
+	//if (hash_table[struc_def].struc_ptr == NULL)
+		//abort_b0("Out of Memory!");
+	r0 = 0;
+	if (r2 == r0){
+		abort_b0('Out of Memory error on allocating space for structure definition');
+	}
+	hash_table[r1].struc_ptr = r2;
+	//if(DEBUG)
+		//printf("Source ptr = %p\n", hash_table[struc_def].struc_ptr);
+	if(r12){
+		echo_string(STDOUT, 'Source ptr = ');
+		echo_hex(STDOUT, r2);
+		echo_string(STDOUT, '\n');
+	}
+	//token++;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	atStackEnd(r13);
+	//exit_struc = 0;
+	r11 = 0;
+	//token = 0;		// Clear the stack before we star our own little private processing run.
+	r14 = r11;
+	token = r14;
+	//getChar();
+	getChar();
+	r1 = r11;
+	//while (exit_struc == 0) {
+	while (r11 == r1){
+		//do_process = nextToken();
+		r2 = nextToken();
+		do_process = r2;
+		r14 = token;
+		//if (DEBUG) 
+			//printf("do_process_struc = 0x%x, token = 0x%x\n", do_process, token);
+		if(r12){
+			echo_string(STDOUT, 'do_process_struc = ');
+			echo_hex(STDOUT, r2);
+			echo_string(STDOUT, ', token = ');
+			echo_hex(STDOUT, r14);
+			echo_string(STDOUT, '\n');
+		}
+		//if (token != 0){
+		if(r14){
+			//switch(do_process){
+			r0 = 1;
+				//case 1 : preparse_token_stack(); 
+			if(r2 == r0){
+					//exit_struc = process_struc(); 
+					preparse_token_stack();
+					r11 = process_struc();
+					r14 = token;
+					r0 = 0;
+					if(r2 == r0){
+						//if(do_process == 0)
+							//i = exit_struc;
+						//break;		// get the next token, and set token variable
+						r13 = r11;
+						i = r13;
+					}
+			//	case 2 : // We have encountered a { so let's handle it gracefully.
+			} else {
+				r0 = 2;
+				if(r2 == r0){
+					//if (token_stack[0] != TOKEN_BLOCK_END)
+						//abort_b0("Invalid construct");
+					r0 = TOKEN_BLOCK_END;
+					r3 = [r15];
+					if(r3 != r0){
+						abort_b0('Invalid construct');
+					}
+					// We have something other than ELSE
+					// Becuase most items need to be at the start, we simply remove all
+					// block ends, and reprocess as per normal.
+					// We get lucky becuase token = our first non } character!
+					//j = token - 1; // make j our count!
+					r8 = r14 - 1;
+					//token = 1;
+					r14 = 1;
+					token = r14;
+					//for (k = 0; k < j; k++){
+						// Quick move the stack forward
+						//token_stack[k] = token_stack[token];
+						//token++;
+						//if (DEBUG)
+							//printf("stack[%d] = 0x%x\n",k,token_stack[k]);
+					//}
+					r1 = 0;
+					while (r1 < r8){
+						r0 = [r15+r14*8];
+						[r15+r1*8] = r0;
+						r14 = r14 + 1;
+						token = r14;
+						r1 = r1 + 1;
+						if(r12){
+							push r0;
+							echo_string(STDOUT, 'stack[');
+							echo_integer(STDOUT, r1);
+							echo_string(STDOUT, '] = ');
+							pop r0;
+							echo_hex(STDOUT, r0);
+							echo_string(STDOUT, '\n');
+						}
+					}
+					//token = 0;		// Set our stack pointer to 0
+					r14 = 0;
+					token = r14;
+					//i = j;			// Set our new stack size to the count!
+					r13 = r8;
+					i = r13;
+					//exit_struc = 1;
+					r11 = 1;
+					//if(DEBUG)
+						//printf("process stack > token = 0x%x, i = 0x%x\n", token, i);
+					if(r12){
+						echo_string(STDOUT, 'process stack > token = ');
+						echo_hex(STDOUT, r14);
+						echo_string(STDOUT, ', i = ');
+						echo_hex(STDOUT, r13);
+						echo_string(STDOUT, '\n');
+					}
+					//block_level++;
+					r0 = block_level;
+					r0 = r0 + 1;
+					block_level = r0;
+					r1 = TOKEN_STACK_SIZE;
+					//if(block_level >= TOKEN_STACK_SIZE)
+						//abort_b0("INTERNAL: Block Level is too large - too many nested blocks! - Increase TOKEN_STACK_SIZE");
+					if(r0 >= r1){
+						abort_b0('INTERNAL: Block Level is too large - too many nested blocks! - Increase TOKEN_STACK_SIZE');
+					}
+					//do_process = 0;
+					r2 = 0;
+					do_process = r2;
+					//break;
+				}
+			}
+			//}
+		//}
+		}
+		//if (DEBUG)
+			//printf("exit_struc = 0x%x\n", exit_struc);
+		if(r12){
+			echo_string(STDOUT, 'exit_struc = ');
+			echo_hex(STDOUT, r11);
+			echo_string(STDOUT, '\n');
+		}
+		r1 = 0;
+	//}
+	}
+	//if (DEBUG) 
+		//printf("final do_process_struc = 0x%x, token = 0x%x, i = %d\n", do_process, token, i);
+	if(r12){
+		echo_string(STDOUT, 'final do_process_struc = ');
+		echo_hex(STDOUT, r11);
+		echo_string(STDOUT, ', token = ');
+		echo_hex(STDOUT, r14);
+		echo_string(STDOUT, ', i = ');
+		echo_hex(STDOUT, r13);
+		echo_string(STDOUT, '\n');
+	}
+	//if (do_process == 1) token = i;
+	r0 = 1;
+	if(r11 == r0){
+		r14 = r13;
+		token = r14;
+	}
+	//block_level--;
+	r0 = block_level;
+	r0 = r0 - 1;
+	block_level = r0;
+	
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+};
+proc process_notminus_directive(i){
+	push r1, r2, r3, r4, r5, r12, r13, r14, r15;
+	//atStackStart();
+	atStackStart();
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	//if (token_stack[token] < HASH_OFFSET)
+		//abort_b0("Expected Token/Label");
+	r1 = [r15+r14*8];
+	r0 = HASH_OFFSET;
+	if(r1 < r0){
+		abort_b0('Expected Token/Label');
+	}
+	r1 = r1 - r0;
+	r2 = hash_table[r1].token_type;
+	r0 = 0;
+	//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & (TYPE_REG + TYPE_REG_SHORT + TYPE_REG_FPU)) == 0 )
+		//abort_b0("Expected Register");
+	r3 = r2 && TYPE_REG + TYPE_REG_SHORT + TYPE_REG_FPU;
+	if(r3 == r0){
+		abort_b0('Expected Register');
+	}
+	//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == TYPE_REG_FPU) {
+	r0 = TYPE_REG_FPU;
+	if(r2 == r0){
+		//if (token_stack[0] == TOKEN_NOT){
+		r0 = [r15];
+		r3 = TOKEN_NOT;
+		if(r0 == r3){
+			//abort_b0("FPU registers do not support bitwise operations");
+			abort_b0('FPU registers do not support bitwise operations');
+		//} else {
+		} else {
+			//if (token_stack[token]-HASH_OFFSET == HASH_fp0){
+				//fprintf(code, "\tfchs\n");
+			//} else {
+				//abort_b0("NEG can only be performing on fp0");
+			//}
+			r0 = HASH_fp0;
+			if(r1 == r0){
+				r12 = code;
+				echo_string(r12, '\tfchs\n');
+			} else {
+				abort_b0('NEG can only be performing on fp0');
+			}
+		//}
+		}
+	//} else {
+	} else {
+		//if (token_stack[0] == TOKEN_NOT){
+		r0 = [r15];
+		r3 = TOKEN_NOT;
+		r2 = &hash_table[r1].token;
+		r12 = code;
+		if(r0 == r3){
+			//fprintf(code, "\tnot %s\n", hash_table[token_stack[token]-HASH_OFFSET].token);
+			echo_string(r12, '\tnot ');
+			echo_string(r12, r2);
+			echo_string(r12, '\n');
+		//} else {
+		} else {
+			//fprintf(code, "\tneg %s\n", hash_table[token_stack[token]-HASH_OFFSET].token);
+			echo_string(r12, '\tneg ');
+			echo_string(r12, r2);
+			echo_string(r12, '\n');
+		}			
+		//}				
+	//}
+	}
+	//token++;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	atStackEnd(r13);
+	pop r15, r14, r13, r12, r5, r4, r3, r2, r1;
+};
+
+proc process_exit_directive(i){
+	push r1, r2, r3, r4, r5, r12, r13, r14, r15;
+	//atStackStart();
+	atStackStart();
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = code;
+	//TokenIs(TOKEN_PARA_START);
+	TokenIs(TOKEN_PARA_START);
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	r1 = [r15+r14*8];
+	r2 = TOKEN_PARA_END;
+	//if (token_stack[token] != TOKEN_PARA_END){
+	if(r1 != r2){
+		r0 = 0;
+		r2 = TOKEN_OFFSET;
+		if (r1 < r2) { r0 = 1; };
+		r2 = TOKEN_MINUS;
+		if (r1 == r2) { r0 = 1; };
+		//if ((token_stack[token] < TOKEN_OFFSET) || (token_stack[token] == TOKEN_MINUS)) {
+		if(r0){
+			// We have an immediate load
+			//fprintf(code, "\tmov r0, ");
+			echo_string(r12, '\tmov r0, ');
+			//if (token_stack[token] == TOKEN_MINUS) {
+				//token++;
+				//fprintf(code, "-");
+			//}
+			r0 = TOKEN_MINUS;
+			if(r1 == r0){
+				r14 = r14 + 1;
+				token = r14;
+				echo_string(r12, '-');
+			}
+			//outputNumber(i, NUM_INTEGER);
+			outputNumber(r13, NUM_INTEGER, r12);
+			//fprintf(code, "\n");
+			echo_string(r12, '\n');
+		//} else {
+		} else {
+			// We should have a reg										
+			//TokenIsLabelType(TYPE_REG);  // Only allow 64bit reg
+			TokenIsLabelType(TYPE_REG);
+			//if ((token_stack[token]-HASH_OFFSET) != HASH_r0)	// If the reg is r0, then don't output code!
+				//fprintf(code, "\tmov r0, %s\n", hash_table[token_stack[token]-HASH_OFFSET].token);
+			r0 = HASH_r0+HASH_OFFSET;
+			if(r1 != r0){
+				r1 = r1 - HASH_OFFSET;
+				r2 = &hash_table[r1].token;
+				echo_string(r12, '\tmov r0, ');
+				echo_string(r12, r2);
+				echo_string(r12, '\n');
+			}
+			//token++;
+			r14 = token;
+			r14 = r14 + 1;
+			token = r14;
+		//}
+		}
+		//TokenIs(TOKEN_PARA_END);
+		TokenIs(TOKEN_PARA_END);
+	//} else {
+	} else {
+		//fprintf(code, "\tmov r0, 0\n");
+		echo_string(r12, '\tmov r0, 0\n');
+	//}
+	}
+	//if (token_stack[0] == HASH_exit+HASH_OFFSET){
+		//fprintf(code, "\tjmp B0_sys_exit\n");
+	//} else {
+		//fprintf(code, "\tret\n");
+	//}
+	r1 = [r15];
+	r2 = HASH_exit+HASH_OFFSET;
+	if(r1 == r2){
+		echo_string(r12, '\tjmp B0_sys_exit\n');
+	} else {
+		echo_string(r12, '\tret\n');
+	}
+	//token++;
+	r14 = token;
+	r14 = r14 + 1;
+	token = r14;
+	//atStackEnd(i);
+	atStackEnd(r13);
+	pop r15, r14, r13, r12, r5, r4, r3, r2, r1;
+};
+
+proc process_token_preparser(i){
+	push r1, r2, r3, r4, r5, r8, r9, r10, r11, r12 ,r13, r14, r15;
+	m64 dummy;
+	r15 = &token_stack;
+	r14 = token;
+	r13 = i;
+	r12 = DEBUG;
+	r11 = &pp_GenCode;
+	r10 = pp_ptr;
+	//if(DEBUG)
+		//printf("Preparser Command - ");
+	if(r12){
+		echo_string(STDOUT, 'Preparser Command - ');
+	}
+	//atStackStart();
+	atStackStart();
+	r14 = token;
+	r0 = [r15+r14*8];
+	//switch(token_stack[token]){
+	r1 = HASH_define+HASH_OFFSET;
+	if(r0 == r1){
+		//case HASH_define+HASH_OFFSET:
+			//if(DEBUG)
+				//printf("define\n");
+			if(r12){
+				echo_string(STDOUT, 'define\n');
+			}
+			r0 = [r11+r10*8];
+			r1 = 1;
+			//if (pp_GenCode[pp_ptr] == 1) {
+			if(r0 == r1){
+				//token++;
+				r14 = r14 + 1;
+				token = r14;
+				//if (token == i) 
+					//abort_b0("Invalid Construct");	// We should have something;
+				if(r14 == r13){
+					abort_b0('Invalid Construct');
+				}
+				//IsLabelAllocated();		// Lets see if our token is already defined?
+				IsLabelAllocated();
+				//token++;
+				r14 = token;
+				r14 = r14 + 1;
+				token = r14;
+				//if (token != i){
+				if(r14 != r13){
+					//TokenIs(TOKEN_EQUATE);
+					TokenIs(TOKEN_EQUATE);
+					//token++;
+					r14 = r14 + 1;
+					token = r14;
+					r0 = [r15+r14*8];
+					r2 = 0;
+					r1 = TOKEN_MINUS;
+					if(r0 == r1){ r2 = 1; }
+					r1 = TOKEN_OFFSET;
+					if(r0 < r1){ r2 = 1; }
+					//if ((token_stack[token] == TOKEN_MINUS) || (token_stack[token] < TOKEN_OFFSET)) {
+					if(r2){
+						// We have an immediate which is what is expected!
+						//setDefine(token_stack[2]-HASH_OFFSET, i); // This sets the label to a define, with value!
+						r0 = token_stack[2];
+						r0 = r0 - HASH_OFFSET;
+						setDefine(r0, r13);
+						//atStackEnd(i);
+						atStackEnd(r13);
+					//} else {
+					} else {
+						//abort_b0("Invalid Construct");
+						abort_b0('Invalid Construct2');
+					//}
+					}
+				//} else {
+				} else {
+					// Look like a simple #define {label};
+					//hash_table[token_stack[2]-HASH_OFFSET].token_type = TYPE_DEFINE; // Set the label to TYPE_DEFINE
+					r0 = token_stack[2];
+					r0 = r0 - HASH_OFFSET;
+					hash_table[r0].token_type = TYPE_DEFINE;
+				//}
+				}
+				//atStackEnd(i);
+				atStackEnd(r13);
+			//} else {
+			} else {
+				//token = i; // Skip the DEFINE statement
+				r14 = r13;
+				token = r14;
+			//}
+			}
+			//if(DEBUG)
+				//printf("#define - pp_ptr = %d, pp_GenCode = %d\n", pp_ptr, pp_GenCode[pp_ptr]);
+			r10 = pp_ptr;
+			if(r12){
+				r1 = [r11+r10*8];
+				echo_string(STDOUT, '#define - pp_ptr = ');
+				echo_integer(STDOUT, r10);
+				echo_string(STDOUT, ', pp_GenCode = ');
+				echo_integer(STDOUT, r1);
+				echo_string(STDOUT, '\n');
+			}
+			//break;
+	} else {
+		r1 = HASH_undefine+HASH_OFFSET;
+		if(r0 == r1){
+		//case HASH_undefine+HASH_OFFSET:
+			//if(DEBUG)
+				//printf("undefine\n");
+			if(r12){
+				echo_string(STDOUT, 'undefine\n');
+			}
+			r0 = [r11+r10*8];
+			r1 = 1;
+			//if (pp_GenCode[pp_ptr] == 1) {
+			if(r0 == r1){
+				//token++;
+				r14 = r14 + 1;
+				token = r14;
+				//if (token == i) 
+					//abort_b0("Invalid Construct");	// We should have something;
+				if(r14 == r13){
+					abort_b0('Invalid Construct');
+				}
+				//isHash(token_stack[token]);
+				r1 = [r15+r14*8];
+				isHash(r1);
+				r2 = r1 - HASH_OFFSET;
+				r0 = 0;
+				r1 = TYPE_DEFINE;
+				r3 = hash_table[r2].token_type;
+				r3 = r3 && r1;
+				//if ((hash_table[token_stack[token]-HASH_OFFSET].token_type & TYPE_DEFINE) == TYPE_DEFINE) {
+				if(r3 == r1){
+					//hash_table[token_stack[token]-HASH_OFFSET].token[0] = 0;
+					hash_table[r2].token = r0;
+					//hash_table[token_stack[token]-HASH_OFFSET].hash = 0;
+					hash_table[r2].hash = r0;
+					//hash_table[token_stack[token]-HASH_OFFSET].token_type = 0;
+					hash_table[r2].token_type = r0;
+					//hash_table[token_stack[token]-HASH_OFFSET].local_offset = 0;
+					hash_table[r2].local_offset = r0;
+					//hash_table[token_stack[token]-HASH_OFFSET].define_int = 0;
+					hash_table[r2].define_int = r0;
+					//hash_table[token_stack[token]-HASH_OFFSET].define_fp = 0;
+					dummy = r0;
+					fp0 = dummy;
+					hash_table[r2].define_fp = fp0;
+				//}
+				}
+				//token++;
+				r14 = r14 + 1;
+				token = r14;
+				//atStackEnd(i);
+				atStackEnd(r13);
+			//} else {
+			} else {
+				//token = i; // Skip the UNDEFINE statement
+				r14 = r13;
+				token = r14;
+			//}
+			}
+			//if(DEBUG)
+				//printf("#undefine - pp_ptr = %d, pp_GenCode = %d\n", pp_ptr, pp_GenCode[pp_ptr]);					
+			if(r12){
+				r10 = pp_ptr;
+				r1 = [r11+r10*8];
+				echo_string(STDOUT, '#undefine - pp_ptr = ');
+				echo_integer(STDOUT, r10);
+				echo_string(STDOUT, ', pp_GenCode = ');
+				echo_integer(STDOUT, r1);
+				echo_string(STDOUT, '\n');
+			}
+			//break;
+	} else {
+		r2 = 0;
+		r1 = HASH_ifdef+HASH_OFFSET;
+		if(r0 == r1) { r2 = 1; };
+		r1 = HASH_ifndef+HASH_OFFSET;
+		if(r0 == r1) { r2 = 1; };
+		if(r2){
+		//case HASH_ifdef+HASH_OFFSET:
+		//case HASH_ifndef+HASH_OFFSET:
+			//if(DEBUG)
+				//printf("ifdef or ifndef\n");
+			if(r12){
+				echo_string(STDOUT, 'ifdef or ifndef\n');
+			}
+			r10 = pp_ptr;
+			r0 = [r11+r10*8];
+			r1 = 1;
+			//if (pp_GenCode[pp_ptr] == 1) {
+			if(r0 == r1){
+				//token++; // Skip the current preparser command
+				//token++; // Skip the hash of the token!
+				r14 = r14 + 2;
+				token = r14;
+				//if (i == token) {
+				if(r14 == r13){
+					// we are at the end of the token stack.
+					//token--;
+					r14 = r14 - 1;
+					token = r14;
+					// The value on the stack MUST be a HASH.
+					//isHash(token_stack[token]);
+					r1 = [r15+r14*8];
+					isHash(r1);
+					//pp_ptr++;
+					r10 = pp_ptr;
+					r10 = r10 + 1;
+					pp_ptr = r10;
+					//if(pp_ptr >= MAX_LIB_DEPTH) abort_b0("INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH");
+					// Let's see if the hash is defined
+					r0 = MAX_LIB_DEPTH;
+					if(r10 >= r0){
+						abort_b0('INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH');
+					}
+					r0 = 0;
+					//if (hash_table[token_stack[token]-HASH_OFFSET].token_type == 0) {
+					r1 = r1 - HASH_OFFSET;
+					r2 = hash_table[r1].token_type;
+					if(r2 == r0){
+						// It hasn't been defined!
+						//if (token_stack[1] == HASH_ifdef+HASH_OFFSET) {
+						r1 = HASH_ifdef+HASH_OFFSET;
+						r2 = token_stack[1];
+						if(r2 == r1){
+							//pp_GenCode[pp_ptr] = 0;
+							[r11+r10*8] = r0;
+						//} else {
+						} else {
+							//pp_GenCode[pp_ptr] = 1;
+							r0 = 1;
+							[r11+r10*8] = r0;
+						//}
+						}
+					//} else {
+					} else {
+						// It has been defined in some way, it could be a proc, variable, keyword, or other, we don't care!
+						//if (token_stack[1] == HASH_ifdef+HASH_OFFSET) {
+						r1 = HASH_ifdef+HASH_OFFSET;
+						r2 = token_stack[1];
+						if(r2 == r1){
+							//pp_GenCode[pp_ptr] = 1;
+							r0 = 1;
+							[r11+r10*8] = r0;
+						//} else {
+						} else {
+							//pp_GenCode[pp_ptr] = 0;
+							[r11+r10*8] = r0;
+						//}
+						}
+					//}
+					}
+					//token++;
+					r14 = r14 + 1;
+					token = r14;
+				//} else {
+				} else {
+					// We must have a comparison operator?
+					//token--;
+					r14 = r14 - 1;
+					token = r14;
+					//isHash(token_stack[token]);
+					r1 = [r15+r14*8];
+					isHash(r1);
+					//target = token_stack[token] - HASH_OFFSET;
+					r5 = r1 - HASH_OFFSET;
+					target = r5;
+					//pp_ptr++;
+					r10 = pp_ptr;
+					r10 = r10 + 1;
+					pp_ptr = r10;
+					//if(pp_ptr >= MAX_LIB_DEPTH) abort_b0("INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH");
+					r0 = MAX_LIB_DEPTH;
+					if(r10 >= r0){
+						abort_b0('INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH');
+					}
+					//token++;
+					r14 = r14 + 1;
+					token = r14;
+					r1 = [r15+r14*8];
+					//if ((token_stack[token] >= TOKEN_EQUALS)&&(token_stack[token] <= TOKEN_GREATERTHAN)){
+					r2 = r1 - TOKEN_EQUALS;
+					r3 = TOKEN_GREATERTHAN - TOKEN_EQUALS;
+					if (r2 <= r3){
+						// We have our operator;
+						//token++;
+						r14 = r14 + 1;
+						token = r14;
+						r3 = [r15+r14*8];
+						//if ((token_stack[token] > TOKEN_OFFSET)&&(token_stack[token]!=TOKEN_MINUS))
+							//abort_b0("Immediate expected");
+						r4 = TOKEN_OFFSET;
+						if(r3 > r4){
+							r4 = TOKEN_MINUS;
+							if(r3 != r4){
+								abort_b0('Immediate expected');
+							}
+						}
+						//if (token_stack[1] == HASH_ifndef+HASH_OFFSET)
+							//abort_b0("Value comparisons are only available for #ifdef");
+						r3 = token_stack[1];
+						r4 = HASH_ifndef+HASH_OFFSET;
+						if (r3 == r4){
+							abort_b0('Value comparisons are only available for #ifdef');
+						}
+							
+						//pp_GenCode[pp_ptr] = checkDefine(target, token_stack[token-1], i);
+						r0 = checkDefine(r5, r1, r13);
+						[r11+r10*8] = r0;
+						// checkDefine returns 1 for TRUE, 0 for FAIL.
+					//} else {
+					} else { 
+						//abort_b0("Invalid construct");
+						abort_b0('Invalid construct');
+					//}
+					}
+				//}
+				}
+				//atStackEnd(i);
+				atStackEnd(r13);
+			//} else {
+			} else {
+				//pp_ptr++;
+				r10 = pp_ptr;
+				r10 = r10 + 1;
+				pp_ptr = r10;
+				r0 = MAX_LIB_DEPTH;
+				//if(pp_ptr >= MAX_LIB_DEPTH) abort_b0("INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH");
+				if (r10 >= r0){
+					abort_b0('INTERNAL: Preprocessor depth too large - Increase MAX_LIB_DEPTH');
+				}
+				//pp_GenCode[pp_ptr] = 0;
+				r0 = 0;
+				[r11+r10*8] = r0;
+			//}
+			}
+			//token = i;
+			r14 = r13;
+			token = r14;
+			//if(DEBUG)
+				//printf("#ifdef - pp_ptr = %d, pp_GenCode = %d\n", pp_ptr, pp_GenCode[pp_ptr]);
+			if(r12){
+				r10 = pp_ptr;
+				r1 = [r11+r10*8];
+				echo_string(STDOUT, '#ifdef - pp_ptr = ');
+				echo_integer(STDOUT, r10);
+				echo_string(STDOUT, ', pp_GenCode = ');
+				echo_integer(STDOUT, r1);
+				echo_string(STDOUT, '\n');
+			}
+			//break;
+	} else {
+		r1 = HASH_else+HASH_OFFSET;
+		if(r0 == r1){
+		//case HASH_else+HASH_OFFSET:
+			//if(DEBUG)
+				//printf("else\n");
+			if(r12){
+				echo_string(STDOUT, 'else\n');
+			}
+			//token++;
+			r14 = r14 + 1;
+			token = r14;
+			//atStackEnd(i);
+			atStackEnd(r13);
+			r0 = [r11+r10*8];
+			r1 = 1;
+			//if (pp_GenCode[pp_ptr] == 1) {
+			if(r0 == r1){
+				//pp_GenCode[pp_ptr] = 0;
+				r1 = 0;
+				[r11+r10*8] = r1;
+			//} else {
+			} else {
+				//pp_GenCode[pp_ptr] = 1;
+				[r11+r10*8] = r1;
+			//}
+			}
+			//if(DEBUG)
+				//printf("#else - pp_ptr = %d, pp_GenCode = %d\n", pp_ptr, pp_GenCode[pp_ptr]);
+			if(r12){
+				echo_string(STDOUT, '#else - pp_ptr = ');
+				echo_integer(STDOUT, r10);
+				echo_string(STDOUT, ', pp_GenCode = ');
+				echo_integer(STDOUT, r1);
+				echo_string(STDOUT, '\n');
+			}
+			//break;
+	} else {
+		r1 = HASH_endif+HASH_OFFSET;
+		if(r0 == r1){
+		//case HASH_endif+HASH_OFFSET:
+			//if(DEBUG)
+				//printf("endif\n");
+			if(r12){
+				echo_string(STDOUT, 'endif\n');
+			}
+			//pp_ptr--;
+			r10 = r10 - 1;
+			pp_ptr = r10;
+			//token++;
+			r14 = r14 + 1;
+			token = r14;
+			//atStackEnd(i);
+			atStackEnd(r13);
+			//if(DEBUG)
+				//printf("#endif - pp_ptr = %d, pp_GenCode = %d\n", pp_ptr, pp_GenCode[pp_ptr]);
+			if(r12){
+				r1 = [r11+r10*8];
+				echo_string(STDOUT, '#endif - pp_ptr = ');
+				echo_integer(STDOUT, r10);
+				echo_string(STDOUT, ', pp_GenCode = ');
+				echo_integer(STDOUT, r1);
+				echo_string(STDOUT, '\n');
+			}
+			//break;
+	} else {
+		r1 = HASH_COMPILER_OPTION+HASH_OFFSET;
+		if(r0 == r1){
+		
+		//case HASH_COMPILER_OPTION+HASH_OFFSET:
+			//if (pp_GenCode[pp_ptr] == 1){
+			r0 = [r11+r10*8];
+			r1 = 1;
+			if(r0 == r1){
+				// Only if code generation is true do we process this...
+				//if(DEBUG)
+					//printf("#COMPILER_OPTION:");
+				if(r12){
+					echo_string(STDOUT, '#COMPILER_OPTION:');
+				}
+				//token++;
+				r14 = r14 + 1;
+				token = r14;
+				//while (token < i){
+				while (r14 < r13){
+					// We may have multiple options.
+					//switch(token_stack[token]){
+					r0 = [r15+r14*8];
+					r1 = HASH_UTF8+HASH_OFFSET;
+					if (r0 == r1){
+						//case HASH_UTF8+HASH_OFFSET:
+							//UTF8_STRINGS = 1;
+							UTF8_STRINGS = 1;
+							//CLI_UTF8_STRINGS = 1;
+							CLI_UTF8_STRINGS = 1;
+							//if (DEBUG)
+								//printf(" UTF8")
+							if(r12){
+								echo_string(STDOUT, ' UTF8');
+							}
+							//break;
+					} else {
+						r1 = HASH_UTF16+HASH_OFFSET;
+						if(r0 == r1){
+						//case HASH_UTF16+HASH_OFFSET:
+							//UTF8_STRINGS = 0;
+							UTF8_STRINGS = 0;
+							//CLI_UTF8_STRINGS = 1;
+							CLI_UTF8_STRINGS = 1;
+							//if(DEBUG)
+								//printf(" UTF16");
+							if(r12){
+								echo_string(STDOUT, ' UTF16');
+							}
+							//break;
+					} else {
+						r3 = r0;  // Save the token for later;
+						r2 = 0;
+						r1 = HASH_PE+HASH_OFFSET;
+						if(r0 == r1){ r2 = 1; };
+						r1 = HASH_ELF+HASH_OFFSET;
+						if(r0 == r1){ r2 = 1; };
+						r1 = HASH_ELFO+HASH_OFFSET;
+						if(r0 == r1){ r2 = 1; };
+						if(r2){
+						//case HASH_PE+HASH_OFFSET:
+						//case HASH_ELF+HASH_OFFSET:
+						//case HASH_ELFO+HASH_OFFSET:
+							//if (ftell(code))
+								//abort_b0("Unable to define object format once code has been generated");
+							r0 = code;
+							r0 = _ftell(r0);
+							if(r0){
+								abort_b0('Unable to define object format once code has been generated');
+							}
+							r0 = SOURCE_CLI;
+							//if (SOURCE_CLI){
+							if(r0){
+								r1 = 0;
+								r0 = WarningsDisabled;
+								if(r0 == r1){
+									//if(HeaderPrinted == 0)
+										//PrintHeader();
+									r0 = HeaderPrinted;
+									r1 = 0;
+									if(r0 == r1){
+										PrintHeader();
+									}
+									r0 = SOURCE_TYPE;
+									///switch(SOURCE_TYPE){
+									r1 = SOURCE_PE;
+									if(r0 == r1){
+										//case SOURCE_PE: printf("WARNING: Object Format \"PE\" already defined - Ignoring Setting\n"); break;
+										echo_string(STDOUT, 'WARNING: Object Format "PE" already defined - Ignoring Setting\n');
+									} else {
+										r1 = SOURCE_ELF;
+										if(r0 == r1){
+										//case SOURCE_ELF: printf("WARNING: Object Format \"ELF Executable\" already defined - Ignoring Setting\n"); break;
+										echo_string(STDOUT, 'WARNING: Object Format "ELF Executable" already defined - Ignoring Setting\n');
+									} else {
+										//case SOURCE_ELFO: printf("WARNING: Object Format \"ELF Object\" already defined - Ignoring Setting\n"); break;
+										echo_string(STDOUT, 'WARNING: Object Format "ELF Object" already defined - Ignoring Setting\n');
+									}}
+								}
+								//}
+							//} else {
+							} else {
+								//SOURCE_CLI = 1;
+								SOURCE_CLI = 1;
+								//switch(token_stack[token]){
+								r1 = HASH_PE+HASH_OFFSET;
+								if(r3 == r1){
+									//case HASH_PE+HASH_OFFSET:
+										//SOURCE_TYPE = SOURCE_PE;
+										SOURCE_TYPE = SOURCE_PE;
+										//if (DEBUG)
+											//printf(" PE");
+										if(r12){
+											echo_string(STDOUT, ' PE');
+										}
+										//break;
+								} else {
+									r1 = HASH_ELF+HASH_OFFSET;
+									if(r3 == r1){
+									//case HASH_ELF+HASH_OFFSET:
+										//SOURCE_TYPE = SOURCE_ELF;
+										SOURCE_TYPE = SOURCE_ELF;
+										//if (DEBUG)
+											//printf(" ELF");
+										if(r12){
+											echo_string(STDOUT, ' ELF');
+										}
+										//break;
+									} else {
+									//case HASH_ELFO+HASH_OFFSET:
+										//SOURCE_TYPE = SOURCE_ELFO;
+										SOURCE_TYPE = SOURCE_ELFO;
+										//if (DEBUG)
+											//printf(" ELFO");
+										if(r12){
+											echo_string(STDOUT, ' ELFO');
+										}
+										//break;
+								}}
+								//}
+							//}
+							}
+							//break;
+					} else {
+						//case HASH_ENABLESTACKFRAME+HASH_OFFSET:
+						r1 = HASH_ENABLESTACKFRAME+HASH_OFFSET;
+						if(r0 == r1){
+							//STACK_FRAME = 1;
+							STACK_FRAME = 1;
+							//if(DEBUG){
+								//printf(" ENABLESTACKFRAME");
+							//}
+							if(r12){
+								echo_string(STDOUT, ' ENABLESTACKFRAME');
+							}
+							//break;
+						} else {
+						//case HASH_DISABLESTACKFRAME+HASH_OFFSET:
+						r1 = HASH_DISABLESTACKFRAME+HASH_OFFSET;
+						if(r0 == r1){
+							//STACK_FRAME = 0;
+							STACK_FRAME = 0;
+							//if(DEBUG){
+								//printf(" DISABLESTACKFRAME");
+							//}
+							if(r12){
+								echo_string(STDOUT, ' DISABLESTACKFRAME');
+							}
+							//break;
+						} else {
+						//default:
+							//abort_b0("Unknown Compiler Option");
+							abort_b0('Unknown Compiler Option');
+					}}}}}
+					//}
+					//token++;
+					r14 = r14 + 1;
+					token = r14;
+				//}
+				};
+				//if(DEBUG)
+					//printf("\n");
+				if(r12){
+					echo_string(STDOUT, '\n');
+				}
+				//atStackEnd(i);
+				atStackEnd(r13);
+			//}
+			}
+			//break;
+	} else {
+		abort_b0('Invalid construct - Preparser');
+		//default: abort_b0("Invalid construct - Preparser"); break;
+	//}
+	}}}}}}
+	//break;
+	pop r15, r14, r13, r12, r11, r10, r9, r8, r5, r4, r3, r2, r1;
+
+};

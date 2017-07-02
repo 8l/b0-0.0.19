@@ -1,0 +1,102 @@
+B0 Compiler Package
+(c) Darran Kartaschew 2000-2006
+
+Released under a BSD licence.
+
+This package contains the b0 compiler and basic libraries needed
+to produce linux 64bit (x86_64) or Windows x64 based applications. 
+The compiler must be compiled from source code before it can be used.
+
+(A 32bit version for i386 systems can also be built, by either
+running 'make b0-ia32' or uncommenting #define i386 in ./src/b0.c).
+
+Pre-requisites:
+b0 only requires gcc 3.x and glibc (Development packages). Most
+Linux distro's have these installed by default. GNU Make is 
+also needed to compile the compilers source, but you can build
+it manually if you so desire.
+
+For Windows XP x64, you'll need VC++ and GNU Make, or if you don't 
+have GNU Make, then you'll need to compile it manually, see 
+./doc/b0.html for further instructions.
+
+To install (linux):
+>$ make
+>$ su -c "make install"
+>$ make clean
+
+To install (Windows):
+> make -f Makefile.w32
+> make -f Makefile.w32 install
+> make -f Makefile.w32 clean
+
+Then add the environment variable B0_INCLUDE=/usr/local/include/b0
+eg.
+>$ SET B0_INCLUDE=/usr/local/include/b0
+
+or alternatively within ~/.profile add:
+
+export B0_INCLUDE="/usr/local/include/b0"
+
+and for Windows:
+1. Right-click 'My Computer' and select 'Properties'
+2. Select 'Advanced' Tab and 'Environment Variables'
+3. Add it in under 'User'.
+
+To Uninstall (as root):
+># make uninstall
+
+Once installed, runtime configuration can be viewed by
+>$ man b0
+
+A pdf manual can be built, however requires html2ps and Ghostscript
+to be installed, and therefore is not created by default. 
+Note: The manual is provided as html by default, and is found in the
+./doc directory. To make a pdf version of the user manual type
+>$ make docs
+
+The file 'b0.pdf' will be created, which can be viewed with any pdf 
+viewer. 
+
+The following examples are provided:
+
+1. le.b0   -- Basic ELF64 executable. 
+2. le2.b0  -- ELF64 executable providing UTF8 output test.
+3. le3.b0  -- ELF64 Object test.
+4. le4.b0  -- (le4_p1.b0 and le4_p2.b0) ELF64 linking multiple b0 object files.
+5. le5.b0  -- ELF64 test linking with glibc.
+6. le6.b0  -- ELF64 executable using UTF8 as internal string format.
+7. le7.b0  -- Accessing argc and argv on Linux systems.
+              Build using: make test
+                           ./le
+                           ./le2
+                           ./le3
+                           ./le4
+                           ./le5
+                           ./le6
+						    ./le7
+
+6. win64.b0 -- Windows x64 Demo program.
+              Build using: b0 -fpe win64.b0
+                           fasm win64.asm win64.exe
+                           ./win64
+
+7. gtk-cal.b0  -- Linux GTK v1.2 demo program. 
+8. gtk2-cal.b0 -- Linux GTK v2.0 demo program.
+              (located in ./examples/gtk)
+              Build using: cd example/gtk
+                           make
+                           ./gtk-cal & ./gtk2-cal &
+
+9. cgi1.b0  -- ELF64 based cgi for Linux based web-servers.
+              Build using: b0 -felf -utf8 cgi1.b0
+                           fasm cgi.asm b0.cgi
+                           cp b0.cgi /var/www/cgi-bin (or cgi enabled
+                                  directory for your web server).
+                           Open Firefox and goto:
+                                  http://localhost/cgi-bin/b0.cgi
+                                  (replace localhost with your webaddress).
+								  
+10. IA-32 (aka i386) Examples can be found in ./examples/ia_32
+						   
+For further documentation see: ./doc/b0.html

@@ -1,0 +1,66 @@
+# This make file is designed for MS VC++, simply adjust the CC and CFLAGS for your c compiler
+
+# Where you want it installed when you do 'make install'
+PREFIX=%systemsroot%
+# Where you want the includes to go when you do 'make install'
+IPREFIX=%systemroot%
+
+# You shouldn't have to touch the rest unless the compile is failing for some reason?
+DISTNAME=b0
+VERSION=0.0.19
+SRC=.\src
+EXAMPLE_DIR=.\examples
+
+# To assist in cross-compiling
+CC=cl
+AS=fasm
+CFLAGS=/I$(SRC) /O2 /G6 /Wall /Wp64
+LDFLAGS=
+
+#flags for ghostscript and html2ps
+GS=gs
+GSFLAGS=-sDEVICE=pdfwrite -q -dNOPAUSE -dBATCH
+HTML2PS=html2ps
+
+#flags for building the examples
+B0_FLAGS=-felf
+
+all: b0.exe
+b0.exe: $(SRC)\b0.c $(SRC)\b0.h
+	$(CC) $(CFLAGS) $(LDFLAGS) $(SRC)\b0.c
+	
+b0-ia32.exe: $(SRC)\b0.c $(SRC)\b0.h
+	$(CC) $(CFLAGS) -Di386 $(LDFLAGS) $(SRC)\b0.c
+	ren b0.exe b0-ia32.exe
+
+
+clean: 
+	del *.obj
+	del *.asm 
+	del *.tmp 
+	del *.exe 
+	del $(DISTNAME)-$(VERSION).tar.bz2 
+	del *.pdf 
+	del *.ps 
+	del $(EXAMPLE_DIR)\*.asm 
+	del $(EXAMPLE_DIR)\*.obj
+	
+docs: .\doc\b0-man.html
+	$(HTML2PS) -o b0.ps .\doc\b0-man.html
+	$(GS) $(GSFLAGS) -sOutputFile=b0.pdf b0.ps
+	del .\b0.ps
+
+install: b0.exe
+	copy b0.exe $(PREFIX)
+	mkdir $(IPREFIX)\include
+	copy .\include\stdlib.b0 $(IPREFIX)\include
+	copy .\include\stdlib_unicode.b0 $(IPREFIX)\include
+	copy .\include\stdlib_linux.b0 $(IPREFIX)\include
+	@echo 
+	@echo Please set environment variable BO_INCLUDE=$(IPREFIX)/include
+	@echo 
+
+uninstall:
+	del $(IPREFIX)/include
+	del $(PREFIX)/b0.exe
+	

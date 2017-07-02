@@ -1,0 +1,4 @@
+#define LOCAL_HEAP = 1000000h;			// Allocate 10MB for local thread heap;
+
+lib 'stdlib_linux.b0';				// Linux sys_calls
+lib 'stdlib_unicode.b0';			// Unicode conversion routines

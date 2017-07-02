@@ -1,0 +1,738 @@
+// This file contains all the non-OS specific primitives and helper functions normally found within libc.
+
+// proc strcpy(dest, src) {};
+// proc strcat(dest, src) {};
+// proc strcmp(src1, src2) {};
+// proc strrchr(src, char) {}; 
+// proc isAlpha(character) {};
+// proc isXDigit(character) {};
+// proc isDigit(character) {};
+// proc isSpace(character) {};
+// proc ElfHash(string2hash) {};
+// proc PrintHeader() {};
+// proc PrintHelp() {};
+// proc dhtoi(number) {};
+// proc itoa(string, value) {};
+// proc ftoa(string) {}:
+// proc atof(string) {};
+// proc DisplayLabelInfo() {};
+// proc v_size_is_p2(_size) {};
+	
+// OS-specific functions are used by these but are included else where.
+
+proc strcat(dest, src) {
+	push r1, r2, r3, r4, r5;
+	r5 = dest;
+	r5 = r5 + 2;
+	r4 = src;
+	r4 = r4 + 2;
+	r0 = 0;		// End of string;
+	r1 = r0;
+	r2 = r0;	// Our size of the string;
+	r3 = FILENAME_MAX;
+	r1b = [r5+r2];
+	while (r1 != r0){
+		r2 = r2 + 1;
+		r1b = [r5+r2];
+		if(r2 >= r3){
+			abort_b0('String is too long');
+		}
+	}
+	// r2 = pointer to NULL;
+	r3 = r3 ^ r3;
+	r1 = r1 ^ r1;
+	r1b = [r4+r3];
+	while(r1){
+		[r5+r2] = r1b;
+		r3 = r3 + 1;
+		r2 = r2 + 1;
+		r1b = [r4+r3];
+	}
+	[r5+r2] = r1;
+	pop r5, r4, r3, r2, r1;
+};
+
+proc strrchr(src, char) {   // returns the OFFSET into the string where the char occurs from the RIGHT.
+	push r1, r2, r3, r4, r5;
+	r5 = src;
+	r5 = r5 + 2;
+	r4 = char;
+	r0 = 0;		// End of string;
+	r1 = r0;	// Our character we are looking at;
+	r2 = r0;	// Our size of the string;
+	r3 = FILENAME_MAX;
+	r1b = [r5+r2];
+	while (r1 != r0){
+		r2 = r2 + 1;
+		r1b = [r5+r2];
+		if(r2 >= r3){
+			abort_b0('String is too long');
+		}
+	}
+	// r2 = our count;
+	while (r1 != r4){
+		r2 = r2 - 1;
+		if(r2 ~< r0){
+			pop r5, r4, r3, r2, r1;
+			return(0);  // char not found;
+		}
+		r1b = [r5+r2];
+	}	
+	r0 = r2;
+	pop r5, r4, r3, r2, r1;
+	return(r0);
+};
+
+// *******************************************
+//
+//  DUMMY CODE!
+
+proc atof(string) {
+	fp0 = 1.0;
+};
+
+proc ftoa(string) {
+	f64 float_value;
+	push r1;
+	float_value = fp0;
+	r1 = string;
+	[r1] = 0;
+	r0 = CHAR_1;
+	[r1+2] = r0b;
+	r0 = CHAR_STOP;
+	[r1+3] = r0b;
+	r0 = CHAR_0;
+	[r1+4] = r0b;
+	[r1+5] = 0;
+	pop r1;
+};
+
+//
+//  *******************************************
+//
+
+proc itoa(dest_ptr, value ){
+	push r1, r2, r3, r4, r5;
+	r5 = dest_ptr;
+	
+	r0 = value; 			// r0 = 0 - Our running value
+	r1 = 10;				// r1 = 10 - Our divisor, r3 = remainder.
+	r2 = r2 ^ r2;			// r2 = 0 - Number of characters in buffer
+	r4 = r4 ^ r4;			// r4 = 0 - Number of characters written to buffer
+	
+	[r5] = r2w;				// Number of characters in the string;
+	r5 = r5 + 2;			// Point to start of string
+	
+	if(r0 ~< r2){
+		//We have a negative value;
+		-r0;
+		r1 = CHAR_MINUS;
+		[r5] = r1b;
+		r5 = r5 + 1;
+		r1 = 10;
+		r4 = r4 + 1;
+	}
+	
+	itoa_puti2(r0);
+	
+	r5 = dest_ptr;
+	[r5+1] = r4b;			// Insert the string count
+	r0 = 0;
+	[r5+r4+2] = r0;
+	
+	pop r5, r4, r3, r2, r1;
+}
+
+proc itoa_puti2(value){
+	r3 = r3 ^ r3;		// r3 = 0;
+	r0 = r0 / r1;		// r0 = quotient, r3 = remainder.
+	r3 = r3 + 30h;		// r3 -> ASCII/UTF16
+	if (r0){
+		push r3;
+		itoa_puti2(r0);
+		pop r3;
+	}
+	[r5] = r3b;
+	r5 = r5 + 1;
+	r4 = r4 + 1;
+}
+
+proc tolower(character) {
+	push r1;
+	r0 = character;
+	r0 = r0 - CHAR_A;
+	r1 = CHAR_Z - CHAR_A;
+	if(r0 < r1){
+		r0 = r0 + CHAR_A + 20h;
+		pop r1;
+		return(r0);
+	} else {
+		pop r1;
+		r0 = character;
+		return(r0);
+	}
+};
+
+proc strcpy(dest, src) {
+	push r4, r5;
+	r5 = src;
+	r4 = dest;
+	r5 = r5 + 2;
+	r4 = r4 + 2;
+	r0 = r0 ^ r0;
+	r0b = [r5];
+	while(r0){
+		[r4] = r0b;
+		r4 = r4 + 1;
+		r5 = r5 + 1;
+		r0b = [r5];
+	}
+	[r4] = r0;
+	pop r5, r4;
+};
+
+proc _strcmp(src1, src2) { //rtns non-zero if different. src1 = ASCIIZ, src2 = b0.
+	push r1, r2, r3, r4, r5;
+	r4 = src1;
+	r5 = src2;
+	r5 = r5 + 2;
+	r2 = 1;			// Our count;
+	r0 = r0 ^ r0;
+	r1 = r0;
+	r3 = r0;
+	r0b = [r4];
+	r1b = [r5];
+	while (r0 == r1){
+		if (r0 == r3){
+			// We have reached the end of the string;
+			pop r5, r4, r3, r2, r1;
+			return(0);
+		}
+		r4 = r4 + 1;
+		r5 = r5 + 1;
+		r2 = r2 + 1;
+		r0b = [r4];
+		r1b = [r5];
+	}
+	r0 = r2;
+	//r0 = r0 - 1;
+	pop r5, r4, r3, r2, r1;
+	return(r0);
+};
+
+proc strcmp(src1, src2) {	 //rtns non-zero if different. (first different character offset).
+	push r1, r2, r3, r4, r5;
+	r4 = src1;
+	r5 = src2;
+	r4 = r4 + 2;
+	r5 = r5 + 2;
+	r2 = 1;			// Our count;
+	r0 = r0 ^ r0;
+	r1 = r0;
+	r3 = r0;
+	r0b = [r4];
+	r1b = [r5];
+	while (r0 == r1){
+		if (r0 == r3){
+			// We have reached the end of the string;
+			pop r5, r4, r3, r2, r1;
+			return(0);
+		}
+		r4 = r4 + 1;
+		r5 = r5 + 1;
+		r2 = r2 + 1;
+		r0b = [r4];
+		r1b = [r5];
+	}
+	r0 = r2;
+	//r0 = r0 - 1;
+	pop r5, r4, r3, r2, r1;
+	return(r0);
+};
+
+// Returns 1 if character is an Alpha, else 0
+proc isAlpha(character) {
+	push r0,r1;
+	r0 = character;
+	r1 = 41h; // 'A'
+	if (r0 >= r1){
+		r1 = 5ah; // 'Z'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	r1 = 61h; // 'a'
+	if (r0 >= r1){
+		r1 = 7ah; // 'z'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	r1 = 5fh; // '_'
+	if (r0 == r1){
+		pop r1,r0;
+		return(1);
+	}
+	pop r1,r0;
+	return(0);
+}
+
+//Returns 1 if character is a hexidecimal digit, else 0
+proc isXDigit(character){
+	push r0,r1;
+	r0 = character;
+	r1 = 41h; // 'A'
+	if (r0 >= r1){
+		r1 = 46h; // 'F'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	r1 = 61h; // 'a'
+	if (r0 >= r1){
+		r1 = 66h; // 'f'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	r1 = 30h; // '0'
+	if (r0 >= r1){
+		r1 = 39h; // '9'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	pop r1,r0;
+	return(0);
+}	
+
+//Returns 1 is character is a numerical digit, else 0
+proc isDigit(character){
+	push r0,r1;
+	r0 = character;
+	r1 = 30h; // '0'
+	if (r0 >= r1){
+		r1 = 39h; // '9'
+		if (r0 <= r1){
+			pop r1,r0;
+			return(1);
+		}
+	}
+	pop r1,r0;
+	return(0);
+}
+
+//Returns 1 if character is considered a whitespace character.
+proc isSpace(character){
+	push r0,r1;
+	r0 = character;
+	r1 = SP;
+	if (r0 == r1){
+		pop r1, r0;
+		return(1);
+	}
+	r1 = CR;
+	if (r0 == r1){
+		pop r1, r0;
+		return(1);
+	}
+	r1 = 0;
+	if (r0 == r1){
+		pop r1, r0;
+		return(1);
+	}
+	r1 = TAB;
+	if (r0 == r1){
+		pop r1, r0;
+		return(1);
+	}
+	r1 = LF;
+	if (r0 == r1){
+		pop r1, r0;
+		return(1);
+	}
+	pop r1, r0;
+	return(0);
+}
+
+// *--- ElfHash ---------------------------------------------------
+// *  The published hash algorithm used in the UNIX ELF format
+// *  for object files. Accepts a pointer to a string to be hashed
+// *  and returns an unsigned long.
+// *-------------------------------------------------------------*/
+//unsigned long ElfHash ( const unsigned char *name ){
+//	unsigned long h = 0, g;
+//	while ( *name ){
+//		h = ( h << 4 ) + *name++;
+//		g = h & 0xF0000000;
+//		if ( g )
+//			h ^= g >> 24;
+//		h &= ~g;
+//	}
+//	return h;
+//}
+
+//Dump of assembler code for function ElfHash:
+
+// Note: rbp - 24 = g
+// Note: rbp - 16 = h
+// Note: rbp - 8 = name
+
+//0x0000000000400468 <ElfHash+0>: push   rbp
+//0x0000000000400469 <ElfHash+1>: mov    rbp,rsp
+//0x000000000040046c <ElfHash+4>: mov    DWORD PTR [rbp-8],rdi
+//0x0000000000400470 <ElfHash+8>: mov    DWORD PTR [rbp-16],0x0
+//0x0000000000400478 <ElfHash+16>:        mov    rax,DWORD PTR [rbp-8]
+//0x000000000040047c <ElfHash+20>:        cmp    BYTE PTR [rax],0x0
+//0x000000000040047f <ElfHash+23>:        je     0x4004dc <ElfHash+116>
+//0x0000000000400481 <ElfHash+25>:        mov    rax,DWORD PTR [rbp-16]
+//0x0000000000400485 <ElfHash+29>:        mov    rdx,rax
+//0x0000000000400488 <ElfHash+32>:        shl    rdx,0x4
+//0x000000000040048c <ElfHash+36>:        mov    rax,DWORD PTR [rbp-8]
+//0x0000000000400490 <ElfHash+40>:        movzx  rax,BYTE PTR [rax]
+//0x0000000000400494 <ElfHash+44>:        lea    rax,[rdx+rax]
+//0x0000000000400498 <ElfHash+48>:        mov    DWORD PTR [rbp-16],rax
+//0x000000000040049c <ElfHash+52>:        lea    rax,[rbp-8]
+//0x00000000004004a0 <ElfHash+56>:        rex64 inc    DWORD PTR [rax]
+//0x00000000004004a3 <ElfHash+59>:        mov    rax,DWORD PTR [rbp-16]
+//0x00000000004004a7 <ElfHash+63>:        and    eax,0xf0000000
+//0x00000000004004ac <ElfHash+68>:        mov    DWORD PTR [rbp-24],rax
+//0x00000000004004b0 <ElfHash+72>:        rex64 cmp    DWORD PTR [rbp-24],0x0
+//0x00000000004004b5 <ElfHash+77>:        je     0x4004c9 <ElfHash+97>
+//0x00000000004004b7 <ElfHash+79>:        mov    rax,DWORD PTR [rbp-24]
+//0x00000000004004bb <ElfHash+83>:        mov    rdx,rax
+//0x00000000004004be <ElfHash+86>:        shr    rdx,0x18
+//0x00000000004004c2 <ElfHash+90>:        lea    rax,[rbp-16]
+//0x00000000004004c6 <ElfHash+94>:        xor    DWORD PTR [rax],rdx
+//0x00000000004004c9 <ElfHash+97>:        mov    rax,DWORD PTR [rbp-24]
+//0x00000000004004cd <ElfHash+101>:       mov    rdx,rax
+//0x00000000004004d0 <ElfHash+104>:       not    rdx
+//0x00000000004004d3 <ElfHash+107>:       lea    rax,[rbp-16]
+//0x00000000004004d7 <ElfHash+111>:       and    DWORD PTR [rax],rdx
+//0x00000000004004da <ElfHash+114>:       jmp    0x400478 <ElfHash+16>
+//0x00000000004004dc <ElfHash+116>:       mov    rax,DWORD PTR [rbp-16]
+//0x00000000004004e0 <ElfHash+120>:       leave  
+//0x00000000004004e1 <ElfHash+121>:       ret    
+
+// I've included in the original C code and it's disassembly to show
+// that my b0 implementation should produce the same result.
+
+// b0 compiled form:
+//_B0_ElfHash:
+//	push r1
+//	push r2
+//	push r3
+//	mov r0, 0
+//	mov r2, 0
+//	mov r1, 0
+//	mov r3, qword [r6+_B0_ElfHash_string2hash]
+//	mov r1b, [r3]
+//	test r1, r1
+//	je .B0_END_BLOCK_000031
+//	.B0_END_BLOCK_000030:
+//	shl r0, 4
+//	add r0, r1
+//	add r3, 1
+//	mov r2, r0
+//	and r2d, 0f0000000h 
+//	jz .B0_END_BLOCK_000033
+//	mov r1, r2
+//	shr r1, 24
+//	xor r0, r1
+//	.B0_END_BLOCK_000033:
+//	neg r2
+//	and r0, r2
+//	mov r1b, [r3]
+//	test r1, r1
+//	jne .B0_END_BLOCK_000030
+//	.B0_END_BLOCK_000031:
+//	pop r3
+//	pop r2
+//	pop r1
+//	ret
+
+proc ElfHash(string2hash){
+	push r1, r2, r3;
+	r0 = 0; 				// h
+	r2 = 0; 				// g
+	r1 = 0; 				// character from string;
+	r3 = string2hash; 	// location of our string;
+	r1b = [r3];			// get our character
+	while (r1){
+		r0 = r0 << 4;			// shift the value left
+		r0 = r0 + r1;			// add the character to the string
+		r3 = r3 + 1;				// increase our pointer to the string;
+		r2 = r0;
+		asm{	and r2d, 0f0000000h 	// Require 32bit LOGICAL AND instead of 64bit.
+}; 								// g = h & 0xF0000000;
+		if (%NOTZERO){			// if (g) 
+			r1 = r2 >> 24;
+			r0 = r0 ^ r1;		// h ^= g >> 24;
+		}
+		!r2;						// h &= ~g;
+		r0 = r0 && r2;
+		r1b = [r3];
+	}
+	pop r3, r2, r1;
+	return(r0);					// return h;
+};
+
+proc PrintHeader(){
+	echo_string(STDOUT, 'b0 v');
+	r0 = &B0_VERSION;
+	echo_string(STDOUT, r0);
+	echo_string(STDOUT, '\nCopyright (C) 2005-2006, Darran Kartaschew.\nAll rights reserved.\n');
+	r0 = &B0_COPYRIGHT;
+	echo_string(STDOUT, r0);
+	echo_string(STDOUT, '\n');
+	r0 = 1;
+	HeaderPrinted = r0;
+}
+
+proc PrintHelp(){
+	PrintHeader();
+	echo_string(STDOUT, '\nUsage: b0 [-v] [-W] [-?|-h|-l] [-f<type>] [-i<include>] [-!] [-DEBUG] [-UTF8] [-UTF16] <filename>\n');
+	echo_string(STDOUT, '\nWhere:\n\t-v\t\tDisplay Version Information\n');
+	echo_string(STDOUT, '\t-W\t\tDisable warnings during compilation\n');
+	echo_string(STDOUT, '\t-? or -h\tDisplay Help\n');
+	echo_string(STDOUT, '\t-l\t\tDisplay Software License\n');
+	echo_string(STDOUT, '\t-f<type>\tOuptut Format Type, \'elf\',\'elfo\' or \'pe\' accepted\n');
+	echo_string(STDOUT, '\t-i<include>\tInclude directories for libraries\n');
+	echo_string(STDOUT, '\t-!\t\tContinue to compile on error (DANGEROUS)\n');
+	echo_string(STDOUT, '\t-DEBUG\t\tDisplay Extremely Verbose Debugging Information\n');
+	echo_string(STDOUT, '\t-UTF8\t\tEncode strings as UTF8\n');
+	echo_string(STDOUT, '\t-UTF16\t\tEncode strings as UTF16\n');
+	echo_string(STDOUT, '\t<filename>\tFile to compile\n');
+	echo_string(STDOUT, '\neg: B0 -felf -i./include -DEBUG myprog.b0\n');
+	exit(0);
+}	
+
+proc PrintLicense(){
+	echo_string(STDOUT,'BSD Licence\n-----------\n\nCopyright (C) 2000-2006, Darran Kartaschew.\nAll rights reserved.\n');
+	echo_string(STDOUT,'\nRedistribution and use in source and binary forms, with or without\n');
+	echo_string(STDOUT,'modification, are permitted provided that the following conditions are met:\n\n');
+	echo_string(STDOUT,'*  Redistributions of source code must retain the above copyright notice, \n');
+	echo_string(STDOUT,'   this list of conditions and the following disclaimer.\n\n'); 
+	echo_string(STDOUT,'*  Redistributions in binary form must reproduce the above copyright notice,\n');
+	echo_string(STDOUT,'   this list of conditions and the following disclaimer in the documentation\n');
+	echo_string(STDOUT,'   and/or other materials provided with the distribution.\n\n'); 
+	echo_string(STDOUT,'*  Neither the name of "B0" nor the names of its contributors may be used\n');
+	echo_string(STDOUT,'   to endorse or promote products derived from this software without specific\n');
+	echo_string(STDOUT,'   prior written permission.\n\n'); 
+	echo_string(STDOUT,'THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"\n');
+	echo_string(STDOUT,'AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE \n');
+	echo_string(STDOUT,'IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE \n');
+	echo_string(STDOUT,'ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE \n');
+	echo_string(STDOUT,'LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR \n');
+	echo_string(STDOUT,'CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF \n');
+	echo_string(STDOUT,'SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS\n');
+	echo_string(STDOUT,'INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN \n');
+	echo_string(STDOUT,'CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) \n');
+	echo_string(STDOUT,'ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE\n');
+	echo_string(STDOUT,'POSSIBILITY OF SUCH DAMAGE.\n\n');
+};
+
+proc dhtoi(number){
+	//  isHex = r5;
+	//  value = r0;
+	
+	push r1, r2, r4, r5;
+	
+	//start_number = number;	// Save the string pointer.
+	r4 = number;
+	r4 = r4 + 2;		// Skip the size marker.
+	push r4;
+	r5 = 0;
+	r0 = r5;
+	//while (*number){
+	r1b = [r4];
+	r1 = r1 && 0ffh;
+	while (r1){
+		//if (((*number >= 'a') && (*number <= 'f')) || (*number == 'h')) {
+		//	isHex = 1;
+		//}
+		r1 = r1 - 61h;  // normalise so that 'a' == 0
+		r2 = 5h;			// a = 0, b = 1, c = 2, d = 3, e = 4, f = 5, g = 6, h = 7.
+		if (r1 <= r2){
+			r5 = 1;
+		}
+		r2 = 7h;
+		if (r1 == r2){
+			r5 = 1;
+		}
+		
+		//*number++;
+		r4 = r4 + 1;
+		r1b = [r4];
+		r1 = r1 && 0ffh;
+	}
+	//number = start_number; // Restore our pointer.
+	pop r4;
+	
+	//if (isHex) {
+	if (r5){
+		//while (*number){
+		r1b = [r4];
+		r1 = r1 && 0ffh;
+		while (r1){
+			//if (*number != 'h') {
+			r2 = 68h;
+			if (r1 != r2){
+				//	value = value << 4;
+				r0 = r0 << 4;
+				//	if (*number < 'a') {
+				r2 = 61h;
+				if (r1 < r2){
+					// value += (*number - '0');
+					r1 = r1 - 30h;
+					r0 = r0 + r1;
+				} else {
+					// value += (*number - 'a' + 10);
+					r1 = r1 - 87;
+					r0 = r0 + r1;
+				}
+			//}
+			}
+			//*number++;
+			r4 = r4 + 1;
+			r1b = [r4];
+			r1 = r1 && 0ffh;
+		}
+	} else {
+		//while (*number){
+		r1b = [r4];
+		r1 = r1 && 0ffh;
+		while (r1){
+			//value *= 10;
+			asm {
+				lea r0, [r0 + r0 * 4];
+				add r0, r0;
+			}
+			//value += (*number - '0');
+			r1 = r1 - 30h; //'0'
+			r0 = r0 + r1;
+			//*number++;
+			r4 = r4 + 1;
+			r1b = [r4];
+			r1 = r1 && 0ffh;
+		}
+	}
+	//if(DEBUG)
+	//	printf("dhtoi = %d\n", value);
+	r1 = DEBUG;
+	if (r1){
+		push r0;
+		r1 = r0;
+		echo_string(STDOUT, 'dhtoi = ');
+		echo_integer(STDOUT, r1);
+		echo_string(STDOUT, '\n');
+		pop r0;
+	}
+	//return value;
+	pop r5, r4, r2, r1;
+	return(r0);
+}
+
+proc DisplayLabelInfo(){
+	//printf("Variable Info:\n  v_base = 0x%lx\n", v_base);
+	echo_string(STDOUT, 'Variable Info:\n  v_base = ');
+	r0 = v_base;
+	echo_hex(STDOUT, r0);
+	//printf("  v_isStruc     = 0x%x\n", v_isStruc);
+	echo_string(STDOUT, '\n  v_isStruc     = ');
+	r0 = v_isStruc;
+	echo_hex(STDOUT, r0);
+	//printf("  v_offset      = 0x%lx\n", v_offset);
+	echo_string(STDOUT, '\n  v_offset      = ');
+	r0 = v_offset;
+	echo_hex(STDOUT, r0);
+	//printf("  v_offset_type = %c\n", v_offset_type);
+	echo_string(STDOUT, '\n  v_offset_type = ');
+	r0 = v_offset_type;
+	echo_character(STDOUT, r0);
+	//printf("  v_size        = 0x%x\n", v_size);
+	echo_string(STDOUT, '\n  v_size        = ');
+	r0 = v_size;
+	echo_hex(STDOUT, r0);
+	//printf("  v_target      = 0x%x\n", v_target);
+	echo_string(STDOUT, '\n  v_target      = ');
+	r0 = v_target;
+	echo_hex(STDOUT, r0);
+	//printf("  v_global      = 0x%x\n", v_global);
+	echo_string(STDOUT, '\n  v_global      = ');
+	r0 = v_global;
+	echo_hex(STDOUT, r0);
+	//printf("  v_index       = 0x%x\n", v_index);	
+	echo_string(STDOUT, '\n  v_index       = ');
+	r0 = v_index;
+	echo_hex(STDOUT, r0);
+	echo_string(STDOUT, '\n');
+}
+
+proc old_v_size_is_p2(_size){
+	push r1;
+	r0 = _size;
+	r1 = 1; if(r0 == r1){ pop r1; return(0); }
+	r1 = 2; if(r0 == r1){ pop r1; return(1); }
+	r1 = 4; if(r0 == r1){ pop r1; return(2); }
+	r1 = 8; if(r0 == r1){ pop r1; return(3); }
+	r1 = 16; if(r0 == r1){ pop r1; return(4); }
+	r1 = 32; if(r0 == r1){ pop r1; return(5); }
+	r1 = 64; if(r0 == r1){ pop r1; return(6); }
+	r1 = 128; if(r0 == r1){ pop r1; return(7); }
+	r1 = 256; if(r0 == r1){ pop r1; return(8); }
+	r1 = 512; if(r0 == r1){ pop r1; return(9); }
+	r1 = 1024; if(r0 == r1){ pop r1; return(10); }
+	r1 = 2048; if(r0 == r1){ pop r1; return(11); }
+	r1 = 4096; if(r0 == r1){ pop r1; return(12); }
+	r1 = 8192; if(r0 == r1){ pop r1; return(13); }
+	r1 = 16384; if(r0 == r1){ pop r1; return(14); }
+	r1 = 32768; if(r0 == r1){ pop r1; return(15); }
+	r1 = 65536; if(r0 == r1){ pop r1; return(16); }
+	r1 = 131072; if(r0 == r1){ pop r1; return(17); }
+	r1 = 262144; if(r0 == r1){ pop r1; return(18); }
+	r1 = 524288; if(r0 == r1){ pop r1; return(19); }
+	r1 = 1048576; if(r0 == r1){ pop r1; return(20); }
+	r1 = 2097152; if(r0 == r1){ pop r1; return(21); }
+	r1 = 4194304; if(r0 == r1){ pop r1; return(22); }
+	r1 = 8388608; if(r0 == r1){ pop r1; return(23); }
+	r1 = 16777216; if(r0 == r1){ pop r1; return(24); }
+	r1 = 33554432; if(r0 == r1){ pop r1; return(25); }
+	r1 = 67108864; if(r0 == r1){ pop r1; return(26); }
+	r1 = 134217728; if(r0 == r1){ pop r1; return(27); }
+	r1 = 268435456; if(r0 == r1){ pop r1; return(28); }
+	r1 = 536870912; if(r0 == r1){ pop r1; return(29); }
+	r1 = 1073741824; if(r0 == r1){ pop r1; return(30); }
+	r1 = 2147483648; if(r0 == r1){ pop r1; return(31); }
+	pop r1; return(0);
+}
+
+proc v_size_is_p2(_size){
+	push r1;
+	r0 = r0 ^ r0;  				// Zero our count
+	r1 = _size;					// Get our variable size
+	while(r1){					// While our size is still above 0
+		r1 = r1 >> 1;			// Shift it to the right 1 bit
+		if(%CARRY){				// If the carry flag is set then we encountered a bit
+			if(r1){				// If there are still other bits set, then our size isn't power of 2
+				pop r1;	
+				r0 = r0 ^ r0;
+				return(r0);		// Return 0 in that case
+			} else {
+				r0 = r0 - 1;		// Since this is the only bit, do the 1 off adjustment
+								// This is becuase we want the number of 0's before our 1,
+								// not the position of the 1.
+			}
+		}
+		r0 = r0 + 1;				// Increase our loop count
+								// if there are no more bits in our size, we exit the loop
+	}
+	pop r1;
+	return(r0);					// Exit with our loop count.
+};
+

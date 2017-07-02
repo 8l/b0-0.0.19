@@ -1,0 +1,39 @@
+// Linux OS-specific system calls go here.
+
+#define LOCAL_HEAP = 100000h;			// Allocate 1MB for local thread heap;
+
+#define STDIN  = 00h;
+#define STDOUT = 01h;
+#define STDERR = 02h;
+
+#define CLOCKS_PER_SEC = 1000000;  //POSIX value
+
+proc _fgetc(handle) {};
+proc _fclose(handle) {};
+proc _remove(string) {};
+proc _clock() {};
+proc _fopen(file2open, acl) {};
+proc _calloc(record_size, num_records) {};
+proc _ftell(handle) {};
+proc _getenv(string) {};
+proc _rewind(handle) {};
+
+proc echo_string(handle, string) {};
+proc echo_integer(handle, integer) {};
+proc echo_character(handle, character) {};
+proc echo_float(handle) {};	// only does fp0
+proc echo_hex(handle, integer) {};
+
+proc memInit(){
+	push r4, r5;
+	r2 = LOCAL_HEAP;	// Let's get our local heap size
+	r1 = 0000h;			// Get top of memory
+	r0 = 045;			// sys_brk
+	syscall;
+	r15 = r0;
+	r1 = r0 + r2; 		// allocate memory (move top of memory).
+	r0 = 045;
+	syscall;			// set new top of bss
+	pop r5, r4;
+	return(r15);
+}

@@ -1,0 +1,27 @@
+// Windows OS-specific system calls go here.
+extern ExitProcess() as 'ExitProcess' in KERNEL32 as 'KERNEL32.DLL';
+
+#define LOCAL_HEAP = 100000h;			// Allocate 1MB for local thread heap;
+
+#define STDIN  = 00h;
+#define STDOUT = 01h;
+#define STDERR = 02h;
+
+#define CLOCKS_PER_SEC = 1000000;  //POSIX value
+
+proc _fgetc(handle) {};
+proc _fclose(handle) {};
+proc _remove(string) {};
+proc _clock() {};
+proc _fopen(file2open, acl) {};
+proc _calloc(record_size, num_records) {};
+proc _ftell(handle) {};
+proc _getenv(string) {};
+proc _rewind(handle) {};
+
+proc echo_string(handle, string) {};
+proc echo_integer(handle, integer) {};
+proc echo_character(handle, character) {};
+proc echo_float(handle) {};	// only does fp0
+proc echo_hex(handle, integer) {};
+

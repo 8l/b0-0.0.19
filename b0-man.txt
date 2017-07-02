@@ -1,0 +1,1107 @@
+B0
+
+Copyright © 2000-2007, Darran Kartaschew
+All rights reserved.
+
+License
+
+Copyright © 2000-2007, Darran Kartaschew
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+Neither the name of "B0" nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Introduction
+
+The B0 package contains a very simple compiler used to compile a language which has high-level constructs but based on low-level or reduced operations.
+
+The language is a cross between assembler and C, and could be considered a High Level Assembler (or HLA), but I personally wouldn't go that far. I prefer to think of it as a hybrid between the two, or a machine dependant High Level Langauge.
+
+Its design focuses around the idea of building a reduced language, while still being feature rich enough that the compiler itself can and has been written in its own language.
+
+Conventions used within this manual
+
+{label}
+label name
+{type}
+type definition
+{reg}
+register, eg r0..r15 or fp0..fp7.
+{flag}
+A CPU status flag state, eg %CARRY or %OVERFLOW.
+{string}
+String
+{immediate}
+A number, either in decimal or hexadecimal. (Note: the default radix is decimal).
+fixed-width
+sample code or reserved keyword
+System Requirements
+
+Either an IA-32 w/EM64T or AMD64 based processor, for 64bit operation.
+Windows XP x64 or Windows Vista x64, FreeBSD 6.1+ (AMD64) or most Linux AMD64 based distributions. (Other 64bit OSes will work, if you use the libc-based build of b0, and they comform to the SYSV 64bit ABI for AMD64 based systems).
+A C Compiler with a POSIX / ANSI compatible libc implementation. eg gcc, or VC++ 2003
+FASM v1.65.13+ Assembler (flatassembler.net).
+Text Editor supporting UTF-8 (Unicode output).
+Highly Recommended for Windows x64 based systems
+Resource Editor, such as ResEd (www.radasm.com)
+Resource Compiler, such as GoRC (www.jorgon.freeserve.co.uk)
+*B0 was originally developed on Windows using both MSVC++ 2003 and gcc. (Get the VC++ 2003 compiler from Microsoft for FREE). gcc was used within the INTERIX environment, now known as "Microsoft Services for Unix 3.5", with the GNU SDK installed. Later versions are built under gcc 3.4.3 on Linux. (CRUX v2.1 - AMD64) and FreeBSD 6.1 (AMD64).
+
+Installation
+
+Official distribution is as source only or *.msi file (Windows x64 based systems only). C source is provided to build the initial bootstrap compiler, and full compiler is provided in B0 source, which can be compiled using the bootstrap compiler. Note: Both implementations are roughly equivalent in functionality. (The C version is fixed at v0.0.19, while the b0 version is actively maintained).
+
+B0 requires no libraries/dlls except for libc/glibc, which should be provided with your C Compiler.
+
+Typical Automatic Installation (GNU/Linux or *BSD):
+
+Untar/bzip2 or Unzip the distribution file to a local user directory or /opt.
+run typical *nix install. eg
+Modify start of src/b0.b0 to define the version to be built
+make b0_libc (when linking against libc)
+make b0_linux (Linux Native version)
+make b0_freebsd (FreeBSD Native Version)
+make install
+- This will install to /usr/local/bin by default.
+Set an environment variable B0_INCLUDE=/usr/local/include/b0 (You can also include other directories here as well, just separate entries with colons).
+To uninstall, simply run: make uninstall.
+Typical Automatic Installation (Windows from Source):
+
+Unzip the distribution file to a local user directory.
+build
+** Uncomment line 18 in src\b0_win64.b0 to add the icons to the final *.exe
+build win
+build install
+- This will install to \Program Files\b0 by default.
+Set an environment variable B0_INCLUDE=\Program Files\b0\include (You can also include other directories here as well, just separate entries with semi-colons).
+To uninstall, simply run: build uninstall.
+Typical Automatic Installation (Windows from *.msi. Requires Windows Installer v2+):
+
+Run the *.msi file, by double clicking on it.
+Set an environment variable B0_INCLUDE=\Program Files\b0\include (You can also include other directories here as well, just separate entries with semi-colons).
+To uninstall, simply run: msiexec /x b0-v0.0.20.msi.
+Typically Manual installation sequence (Warning: this builds v0.0.19):
+
+Untar/bzip2 or Unzip the distribution file to a local user directory.
+Invoke your C compiler, eg
+cl b0.c (Windows platforms with MS VC++ 2003)
+cl /Za /TC b0.c (Windows platofrms with MS VC++ 2005)
+gcc -o b0 b0.c (Linux or Cygwin)
+Copy the resultant file (b0.exe or b0) to a location in your %PATH%, or update your %PATH% environment variable to include the current location of the executable file.
+Copy the ./include directory the same location as the executable file, or another appropriate location (eg: /usr/local/include/b0). (This directory contains the standard library as used by B0). You can place the includes in any directory, with any directory name. Just ensure that the B0_INCLUDE environment path is set to point to the location which they reside.
+Set an environment variable B0_INCLUDE = {b0 location}\include. (You can also include other directories here as well, just separate entries with semi-colons).
+Note: B0 does NOT require any form of administrative/root privileges to operate. I highly recommend that you DO NOT run B0 as administrator / root.
+
+Usage
+
+> b0 <sourcefile>.b0 [-f<format>] [-i<include_paths>] [-DEBUG] [-v] [-h|-?|-l] [-W] [-UTF8] [-UTF16]
+Output: <sourcefile>.asm
+
+The following additional parameters are optional:
+-i<include path> - Additional PATHS to look for include files/libraries, separated by semi-colons. You can also include other predefined environment variables here, eg: -i"%PATH%" to include all paths in the %PATH% environment variable. When including other variables, or paths with spaces, simply encapsulate with " " pair. The -i paths are searched before those found within the %B0_INCLUDE% environment variable.
+-f<output format> - Output format / OS.
+-UTF8 - Set internal string encoding to UTF8 instead of of the default UTF16 encoding.
+-UTF16 - Set internal string encoding to UTF16. (Default)
+-v - Version Information
+-h - Help
+-? - Help
+-l - Display License Information
+-W - Disable display of warnings
+-DEBUG - Extremely Verbose Debugging Output. (This debugging information is to aid debugging the compiler, and NOT to add debugging information to the application).
+
+Where <output format> is:
+elf - ELF64 executable format (Default on *nix)
+elfo - ELF64 object file (*nix) - to be linked to other *.o files to form an executable
+pe - PE64 format (Default on Windows for x86 - 64bit Edition)
+dll - Windows x64 DLL format
+
+If you would like to see other Operating Systems / File Formats, please drop me a note.
+Language Construct and Keywords
+
+The language is very loosely based on C, with strong ties to the simplicity of assembler.
+
+Example Program Construct
+
+//Program 'Hello Word';
+lib 'stdlib.b0';
+m64         int_data;
+m16[1024]   my_string;
+m8          my_values = 1h, 2h, 3h, 4h, 5h;
+proc main () {
+    r0 = &my_string;
+    r1 = &'Hello World';
+        // Dynamic String! Using r1 = 'Hello World'; is
+        // considered the same as r1 = &'Hello World';
+        // however second form is considered more correct
+        // as it's unambiguous in nature. (Explicit pointer
+        // operation).
+    strcpy(r1, r0); // r1 = source, r0 = destination
+    r0 = 1;
+    int_data = r0;
+    r0 = &my_string;
+    echo(r0); // echo is part of stdlib
+    exit(0);
+};
+Reserved Keywords and Symbols
+
+The following keywords and symbols are reserved by the language:
+
+Type Definitions
+
+m8
+define a unsigned/signed 8bit integer.
+m16
+define a unsigned/signed 16bit integer.
+m32
+define a unsigned/signed 32bit integer.
+m64
+define a unsigned/signed 64bit integer.
+f32
+define a 32bit floating point value.
+f64
+define a 64bit floating point value.
+f80
+define a 80bit floating point value.
+{type}[{size}]
+array of type.
+&{label}
+memory location of symbol.
+[{reg}]
+use value stored in register as a pointer into global memory.
+struc {label} { };
+define structure
+Variable Definitions
+
+{type} {label};
+Define a variable call {label} of type {type}
+{type} {label} = {string}|{immediate}, ...;
+Define a variable with name, preinitialised with values and/or string. (Global variables ONLY).
+Function Definitions
+
+proc {label}( {arg1}, {arg2}, ... ) { }; or
+proc {label}( {arg1}, {arg2}, ... ) as '{string}' { };
+function definition. arg1, arg2 , etc are all type m64 and are accessed as a local variable. The latter option defines the public name for the function (used to export the function in ELFO or DLL format).
+extern {label}();
+Define the following function as external, and will be linked at runtime with the name {label};.
+Control Structures
+
+{ };
+instruction block.
+if () { };
+If-Then construct.
+if () { } else { };
+If-Then-Else construct.
+while () { };
+While-Do construct.
+return();
+set return value from current function.
+exit();
+set exit value and halt execution stream.
+jmp
+Redirect to location (goto).
+call
+Indirect call to a procedure.
+ret
+Return from a procedure.
+Comparison Operators
+
+==
+equal to.
+!=
+NOT equal to.
+>
+greater than.
+<
+less than.
+>=
+greater than or equal to.
+<=
+less than or equal to.
+~>
+greater than (signed).
+~<
+less than (signed).
+~>=
+greater than or equal to (signed).
+~<=
+less than or equal to (signed).
+Mathematical and Bitwise Operators
+
+=
+equate.
++
+addition.
+-
+subtraction.
+*
+multiply.
+/
+divide.
+%
+modulus.
+~*
+multiply. (signed)
+~/
+divide. (signed)
+~%
+modulus. (signed)
+&&
+bitwise AND.
+|
+bitwise OR.
+^
+bitwise XOR.
+!
+bitwise NOT.
+<<
+bitwise left shift.
+>>
+bitwise right shift.
+<<<
+bitwise left rotate.
+>>>
+bitwise right rotate.
+Special Operators
+
+push
+Push register onto stack.
+pop
+Pop contents from stack into a register.
+syscall
+Call Operating System. (Warning: expects registers/stack to be set correctly).
+sysret
+Exit Call from Operating System. (Warning: Supervisor code only).
+in
+Read contents of I/O port (r3) and load into r0.
+out
+Writes the contents of r0 to I/O port r3.
+fdecstp
+Decrement the top of stack pointer for the FPU.
+fincstp
+Increment the top of stack pointer for the FPU.
+Other
+
+//
+C++ style Comment.
+asm { }
+assembler statements. (These are passed directly through to the backend assembler, and are NOT processed in any way).
+lib '{filename}'
+include the following library.
+extern {label}(); or
+extern {label}() as '{string}' in {label} as '{string}';
+The following procedure is external to this source code is referenced as follows. eg extern gtk_main(); to tell the compiler that the procedure gtk_main(); is part of another shared library, which will be loaded at runtime. The latter form is for Windows x64 based systems, which require the DLL file to be defined.
+Instruction Makeup
+
+All single operations shall be terminated by a semi-colon ';'. A single operation can be of form:
+
+{reg} = {reg}|{label}|{immediate}|{string}|{memory};
+{reg} = {reg} {bitwise/math operator} {reg}|{immediate};
+{reg} = {function};
+{function};     //Return value is placed into r0.
+!{reg};         //Perform bitwise NOT on register.
+-{reg};         //Perform Negate operation on register.
+{label} = {reg};
+if ({reg}) { };
+if ({reg} {comparison operator} {reg}) { };
+if ({reg}) { } else { };
+if ({reg} {comparison operator} {reg}) { } else { };
+if ({flag}) { };
+if ({flag}) { } else { };
+while ({reg}) { };
+while ({reg} {comparison operator} {reg}) { };
+while ({flag}) { };
+return({reg}|{immediate});
+exit({reg}|{immediate});
+push {reg}, {reg}, ...;
+pop {reg}, {reg}, ...;
+syscall;
+sysret;
+in({reg},{reg});
+out({reg},{reg});
+fdecstp;
+fincstp;
+asm { };
+jmp {reg}|{memory}|{extern function};
+call {reg}|{memory}|{extern function};
+ret;
+Data Definitions
+
+Type Definitions
+
+All integer data definitions shall be of type m8, m16, m32 or m64. All floating point data definitions shall be of type f32, f64 or f80.
+
+All variables, defined at a global level will be made available to all functions, including those located within included files, and vice versa.
+
+All variables defined within functions, shall be restricted to those functions alone.
+
+Variable declarations can be included at any point within the source code, (it's not restricted to occur before an code), with the only restriction that it is declared before use.
+
+B0 adheres to strict type casting, however when loading into a register the contents are zero extended to fit into 64bits.
+
+All data assigned to type m64 can be literal values or pointers. m8, m16 and m32 can be literal values. Single m8, m16 or m32 can be upcast, with high bits = 0. m64's downcast to type m8, m16 or m32 will have high-order bits truncated.
+eg.
+
+m8 i;
+m64 j;
+r0 = 256;
+j = r0;
+i = r0;
+    // i will now equal 0 and NOT 256. 
+    // 256 = 100h. downcast m64 to m8, is effective bitwise
+    // AND by 0ffh. eg 100h AND 0ffh = 0.
+Floating point values, however do not operate in the same manner, instead when cast between bit widths, they will either gain precision (when upcast) or lose precision (when downcast).
+
+Labels
+
+Labels are required for all data definitions and function names. Labels may only contain alphanumeric and underscore characters and are strictly case-sensitive.
+
+All labels must start with either an alpha or underscore char, otherwise numeric value is assumed. The current implementation is limited to [A..Z],[a..z],[0..9],[_] for use in labels. It is planned for future versions to expand on this to allow for most Unicode letter/ideographic characters to be used within labels.
+
+The following labels (or keywords) are reserved:
+
+m8, m16, m32, m64, f32, f64, f80, if, else, while, return, exit, push, pop, syscall, sysret, fdecstp, fincstp, asm, lib, extern, struc, in, out, as, %CARRY, %NOCARRY, %PARITY, %NOPARITY, %OVERFLOW, %NOOVERFLOW, %SIGN, %NOTSIGN, %ZERO, %NOTZERO, UTF16, UTF8, ELF, ELF, PE, DLL, ENABLEFRAME, DISABLEFRAME and all registers. eg r0 .. r15, fp0..fp7 including short forms (with b, w, d suffix).
+
+Immediates
+
+Only decimal and hexadecimal values may be utilised for immediate values, (binary and octal radices are NOT supported at this time). All hexadecimals values should be terminated by a trailing 'h' else decimal number is assumed. eg:
+
+ r0 = 123;     // load r0 with decimal value 123.
+ r0 = 123h;    // load r0 with hexadecimal value 123h.
+ r0 = 0a000h;  // load r0 with hexadecimal value 0a000h.
+ fp0 = 1;      // load fp0 with decimal value 1;
+ fp0 = 3.142;  // load fp0 with decimal value 3.142;
+ fp0 = 1.0e99; // load fp0 with decimal value 1×10^99
+ fp0 = 0a00h;  // INVALID - floating point requires decimal values only.
+Note: For hexadecimal values, only latin a..f (U+0061 .. U+0066) are allowed. Trailing 'h' MUST also be latin h (U+0068).
+
+Strings
+
+All strings shall be encapsulated with single quote marks or apostrophe. eg ' (U+0027). A '\' (U+005C) is considered an ESCAPE character, and when used in conjunction with other characters allow you to define special characters, eg Carriage Return, etc.
+
+The following escape definitions are valid:
+
+\n
+line feed. (U+000A)
+\r
+carriage return. (U+000D)
+\t
+tab. (U+0009)
+\\
+\ character (U+005C)
+\'
+' character (U+0027)
+\0
+NULL character (U+0000)
+If any other character follows \, then both are considered as is. eg '\p' will output as \ (U+005C), p (U+0070).
+
+All strings are by default stored in UTF-16 format, with full Unicode range support (eg U+0000 -> U+10FFFF are supported as defined within Unicode 4.1). All strings are essential just an array of m16, however {label}[0] = size of the string buffer available and {label}[1] = size of the string buffer utilised. The first true character starts at {label}[2]. Strings can contain up to a maximum 65533 code points, with each code point being 16bits. Note, these values are NOT the number of characters, but the number of slots available for encodings. The number of actual characters can be significantly reduced if surrogate pairs and combining characters are used.
+
+Attempting to store a string into an array of type m8 will result in each character encoding being truncated, and NOT translated to UTF-8. Attempting to store a string in type m32 or m64 will have each encoding enlarged for the type. However it will not translate into UTF-32 encodings. To translate a string from one form to another requires the use of the standard library.
+
+Note: the -UTF8 switch will set all strings to be encoded as UTF8, rather than the default UTF16. (The -UTF16 switch does the opposite). As noted above, automatic conversion does not take place, and you still need to use the standard library to convert between types. (The -UTF8 switch was added in v0.0.16 to better support Linux and other *nix systems, and the -UTF16 was added in v0.0.17). Also note, when using dynamic strings, or strings defined as type m8, you will be limited to string lengths of only 253 bytes, since the size values are limited to 8bits. Also be aware, that the standard library only supports UTF16 strings at this time, (eg the strcpy, et al. functions).
+
+Strings may optionally be null-terminated for legacy applications, however it should be stressed that null-termination should not be relied on. (Note: The standard library will NULL terminate strings for legacy applications, however the NULL termination is NOT counted within the size count.)
+
+Using the instructions: r0 = '{string}';, will have the LOCATION of the string stored in to r0 and NOT the string itself. In such situations it is preferable to add the '&' keyword before the string to show this is what is happening. eg r0 = '{string}'; is the same as r0 = &'{string}';, however the latter form is preferred.
+
+Structures
+
+Structures allow you to define a structure of data. eg
+
+struc my_struct {
+    m16 buffer_size;
+    m16 buffer_used;
+    m16[256] string;
+};
+
+mystruct[20] Twenty_strings;
+The above defines that my_struct have the following form, and then we define a group of 20 of those structures. Structures either in the global or local context cannot be pre-initialised.
+
+To embed one structure within another, when defining a new structure, just add the name of the structure within the definition. Unfortunately, when embedding one stucture within another it is not possible to create an array of structures.
+
+struc struc1 {
+    m16 value1;
+    m16 value2;
+}
+
+struc struc2 {
+    struc1;      // Embed a structure within this one
+    m16 value3;
+}
+In the above example, the first structure is simply copied into the new structure, and the compiler will see the second structure as:
+
+struc struc2 {
+    m16 value1;
+    m16 value2;
+    m16 value3;
+};
+Since the first structure is copied into the second structure, you need to ensure that all labels within the resulting structure are different. However, non-related structures can share labels names. eg
+
+struc struc1 {
+    m16 value1;
+    m16 value2;
+}
+
+struc struc2 {
+    m16 value1;   // This is fine as the structures are not connected.
+    m16 size;
+}
+To access a component of a structure, simply add a fullstop '.' followed by the name of the sub-object. eg r0 = Twenty_strings[0].buffer_size;.
+
+It should be noted, that it is NOT possible to use an index into an array which is part of a structure. Using the example above, it is not possible to access the individual words of the string directly, rather a pointer to the start of the string has to be loaded, and then use the pointer to access the string. eg.
+
+r0 = Twenty_strings[r1].string;        // Legal - loads the first word of the string into r0.
+r0 = Twenty_strings[r1].string[1];     // Is illegal!
+
+r0 = &Twenty_strings[r1].string;
+r0w = [r0+1];                          // Is the correct way to access the string!
+Note: The use of structures will cause additional code to be injected into the code stream, (remember most instructions are 1:1 with assembler instructions). While the compiler does its best to optimise these sections, it is wise to check the resultant code.
+
+Structures can also be used to help define an offset from a known source with ease. This becomes usefule when passing structured data between your B0 applications and either other applications and/or Operating System system calls. eg.
+
+r0 = [r3+my_struc.buffer_used];  // mov rax, [rdx+2];
+However unlike normal usage of structures, using structure definitions in this manner, will NOT perform automatic type enforcement on loads and stores. You still need to define the size of the load/store manually.
+
+Functions
+
+All functions (including main) are to return a value as type m64 in r0. A function may accept no or any number of parameters, however those parameters may be passed via registers, or alternatively via the stack, if no inline parameter passing is to be utilised. (Note: rsp = r7). (Passing by register is similar to how it's done in DOS or Linux at the lowest level, and is equivalent to using the FASTCALL define in some C implementations).
+
+Arguments may be passed as part of the function call, however these are restricted to registers (r0..r15 ONLY), strings or immediates ONLY. eg
+
+ echo('Hello World'); // Echo 'Hello World' to stdout.
+ strcpy(r0, r1);      // Copy string as pointed to by r0 to r1.
+ itoa(r0, 0001h);     // Convert immediate value to string 
+                      // located at r0.
+Passing the contents of a variable MUST be performed by loading a register, then passing the register to the function. Similarly pointers to variables MUST also be passed via a register.
+
+Note: Only integer registers (r0..r15) can be used to pass arguments to functions. Floating point registers may not be used.
+
+If no return() parameter is given, then exit value shall be 0 (zero) cast as m64 located in r0, when final block indicator is reached.
+
+To define a procedure, use the proc keyword, followed by the name of the procedure and then any parameters that may be passed. eg
+
+proc main(argc, argv){
+    do_stuff();
+}
+If you wish to export the function in the case when creating ELFO or DLL formats, you must define the name which the function is to be exported. This is done by added 'as '<export_name>' to the end of the procedure declaration. eg
+
+proc EncodeAES() as '_AESEncode' {
+	do_stuff();
+}
+Individual Data Variables can not be exported at this time.
+
+To define a procedure as one that will be linked to the current application at runtime (as used in PE and ELF64), you can use the extern keyword followed by the function name. eg extern gtk_main(); to tell the compiler that the function is part of another shared library file and will be linked at runtime with the name of gtk_main.
+
+If you are generating PE executables, you are also required to include the real function name, as well as the library name and corresponding DLL file name. The general form is:
+
+extern <function_name> as '<real_name>' in <dll_name> as '<dll_filename>'; or
+
+extern ExitProcess as 'ExitProcess' in kernel as 'KERNEL32.DLL';
+Once you have given the library name the corresponding DLL name, you can just use the library name without the DLL name. eg
+
+extern ExitProcess as 'ExitProcess' in kernel as 'KERNEL32.DLL';
+extern GetProcessID as 'GetProcessID' in kernel;
+extern GetProcessName as 'GetProcessName' in kernel;
+Is allowed, as you have already made a link to the DLL name in the first line. No need to redefine it!
+
+Technical Detail on implemented parameter passing: Before the procedure is called, the frame pointer for the procedure is setup by the caller for the callee, eg r6 is set correctly. Parameters are then passed in 8 byte increments from the newly created frame pointer, generally either as pointers or immediate values. (Type definition is done by the called function). On return, the caller will tear down the variable frame before proceeding on to user defined code. However by using either by using ENABLESTACKFRAME and DISABLESTACKFRAME compiler options (See: Compiler Options) you can enable or disable creation of the frame respectively. The primary reason for disabling the frame is to reduce the amount of code generated thereby increasing application in situations where the frame is not needed. eg, when parameters are passed via registers and the called procedure doesn't use local variables.
+
+Technical Detail on the use of extern: If a function is NOT declared as external, and is also not declared within the application (but is called), it will still be marked as external, however will have "_B0_" prefixed to the name. eg
+
+// Program gtk_test;
+extern gtk_main();
+
+proc main() as '_main'{
+    gtk_main();
+    gtk_redraw();
+    exit(0);
+}
+Will produce the following headers to be used by FASM.
+
+format ELF64
+use64
+
+public main as '_main'
+
+extern gtk_main
+extern _B0_gtk_redraw
+...
+When using external shared libraries, you MUST be aware of the calling convention used by those functions, to correctly use them with your application. (Linux shared libraries use the C calling convention, which will require some fudging of the stack in your application. Tip: use the push and pop keywords to assist in this).
+
+Note: if generating PE executables, you MUST manually add the ExitProcess() extern, even though this function is used internally by all B0 applications. eg: extern ExitProcess as 'ExitProcess' in kernel as 'KERNEL32.DLL';. It is NOT automatically implied. The side benefit, is that you can redirect the ExitProcess call to another external procedure. (This may be useful for debugging, or exception handling).
+
+Boolean Operations
+
+No provisions for true Boolean operations are implemented. For control structures of function returns, a evaluated value of 0 is equivalent to "FALSE", or any number 1 or above is equivalent to "TRUE", in the case when no comparison operators are used. The comparison operators listed above operate on type m64 data only. For string or array comparison, custom functions are required.
+eg.
+
+if ('TRUE' == 'TRUE') {}; //is NOT a valid construct.
+eg.
+
+r0 = &'TRUE';
+r1 = &'TRUE';
+r0 = str_cmp();
+if (r0) {}; //is a valid construct.
+Keywords
+
+Registers
+
+Integer
+
+The keywords r0..r15 directly refer to the CPU registers, rax..rdx, rdi, rsi, rbp, rsp, r10..r15, used on the AMD64 architecture. All registers are of size 64bits. The following table shows the exact correspondence.
+
+B0 Register  AMD64 register
+  r0              rax
+  r1              rbx
+  r2              rcx
+  r3              rdx
+  r4              rdi
+  r5              rsi
+  r6              rbp
+  r7              rsp
+  r8              r8
+  r9              r9
+  r10             r10
+  r11             r11
+  r12             r12
+  r13             r13
+  r14             r14
+  r15             r15
+Other forms to denote byte, word and dword sizes are only valid when utilised within asm blocks of source code or for source/destinations during pointer operations. eg r0b, r0w, r0d.
+
+eg
+r0 = i;
+r0 = r0 + 1; // equiv to mov rax, [i]; mov rax, rax; add rax, 1;
+When loading registers from defined variables, all loads will be zero extended to fill the 64bit width of the register.
+
+Floating Point
+
+Floating point registers fp0 .. fp7 directly relate to FPU registers ST0 .. ST7.
+
+Caution: Unlike registers r0..r15, floating point registers can only be utilised in memory load/store operations, math operations (excluding bitwise) and comparisons. They are banned from other uses.
+
+To convert a integer to/from a floating point value, requires the use of the FPU registers. To convert an integer to floating point LOAD a FPU register with an integer memory location. To convert a floating point value into an integer, STORE a FPU register into an integer variable. eg.
+
+// FP -> INT -> FP
+m32 my_int = 0;
+f32 my_fp;
+
+proc main() {
+    fp0 = my_int;
+    my_fp = fp0;  // Convert int in my_int to floating point
+
+    fp0 = my_fp;
+    my_int = fp0; // Convert fp in my_fp to integer.
+};
+Special Use Registers
+
+The following registers are used by the compiler during normal operation, and should be used with care:
+
+r6 = local variable base pointer
+r7 = stack
+Other registers also have special considerations, particularly r0 and r3. Both of these are used for multiplication, division and modulus operations. (see mathematical operators for further information).
+
+Control Structures
+
+Only IF-THEN, IF-THEN-ELSE and WHILE-DO constructs are provided. FOR and REPEAT-WHILE constructs can be emulated using the WHILE-DO construct. eg.
+
+FOR Loop construct:
+
+    r1 = 0;
+    r2 = 5;
+    while (r1 < r2) {
+        do_stuff();
+        r1 = r1 + 1;
+    };
+REPEAT-UNTIL construct:
+
+    r1 = 1;
+    while (r1) {
+        do_stuff();
+        r2 = 1;
+        if (r0 > r2) {
+            r1 = 0;
+        };
+    };
+Please note: indention is cosmetic only. Whitespace between instructions is ignored. eg, r1=0;r2=5;while(r1<r2){do_stuff();r1=r1+1;}; is equivalent to the first FOR Loop construct example.
+
+In order to keep the language implementation easier, all comparisons can only be performed on registers ONLY. eg r0..r15 or fp0..fp7.
+
+When comparing Floating Point values, it is highly recommended that you ALWAYS compare against another register and NOT 0, and never test for equality, but rather a defined range.
+
+For the comparison operation, only a single comparison made be made. eg if (r1 < r2) { }; vs if ((r1<r2)&(r3<r4)) { };
+
+This is mainly because compound statements don't exist, and there is no logical Boolean AND or OR operators. To over come this limitation, you can use the register labels (r0..r15) as temporary storage, or nest multiple comparisons.
+
+In addition to defining a comparison test, control can be transferred based on the current CPU status flags. These are: %CARRY, %NOCARRY, %PARITY, %NOPARITY, %ZERO, %NOTZERO, %SIGN, %NOTSIGN, %OVERFLOW, %NOOVERFLOW. The flags are set based on the previous operation. For example, if you subtracted register from another register, and the result was zero (0), then the %ZERO flag would be set, and the block of code could be executed based on this fact, without having to perform another comparison. eg.
+
+    r0 = 23;
+    r1 = 23;
+    r2 = r0 - r1;
+    if(%ZERO){
+        //Execute this block if the above subtraction result is zero
+    };
+or
+
+    r3 = loop_count;
+    r3 = r3 | r3;     //We need a math operation to set the %ZERO flag to a known state
+    while(%NOTZERO){
+        do_stuff();
+        r3 = r3 - 1;
+    };
+This use of flags is particularly useful for testing for math overflows and the last bit that was shifted out of a register, which is useful for exception handling or bounds checking.
+
+For further information of the CPU flags, please refer to either the Intel IA-32 w/EM64T or the AMD64 programming manuals available from Intel and AMD respectively. (They can be found within the developers areas of their websites, or just use Google to search for them).
+
+Special Operators
+
+call, jmp and ret come under the banner of special control structures, as they allow you to perform indirect branching of code. The operand of a call or jmp is either a 64 register, a global memory pointer, or a external defined procedure. eg:
+
+r0 = &my_proc();
+call r0;                // Call procedure without setting up a stack frame.
+
+r0 = getCallbackAddress();
+call r0;
+
+r1 = procedure_number;  // r1 = the requested procedure number
+r0 = jmp_table[r1];     // r0 = address of requested procedure
+jmp r0;                 // Jump to the requested procedure!
+
+jmp [r0];               // Jump to the location, as pointed to by r0.
+
+extern printf();
+call printf();          // Correct
+
+proc my_proc(){
+   stuff();
+}
+call my_proc();         // Incorrect, only allows external procedures to be called in this method
+
+It is heavily stressed that using the call does NOT setup a stack frame. If a called procedure requires a stack or local heap frame, it is up to the programmer to provide this.
+
+Mathematical functions
+
+Unlike common HLLs, B0 doesn't allow compound statements. eg.
+
+i = (a*b)+(c*d);
+Instead, the following should be used:
+
+r0 = a;
+r1 = b;
+r10 = r0 * r1;
+r0 = c;
+r1 = d;
+r11 = r0 * r1;
+r0 = r10 + r11;
+i = r0;
+Well, I did say that it is an assembler like language.
+
+Additionally integer and floating point operations MUST remain separate. That is it is NOT possible to perform integer operations with FPU registers, and likewise NOT possible to use fp functions with integer registers. eg
+
+r0 = fp0 + fp8;    // INVALID
+r0 = r1 + r2;      // VALID
+fp0 = fp0 ~* fp3;  // VALID
+Floating Point Considerations
+
+The use of floating point calculations, is different to integer type operations, where the floating point system mimics the true way that the x87 FPU operates.
+
+The floating point registers are NOT discreet like the integer registers, but is rather a stack of registers, with fp0 being the top of the stack and fp7 being the bottom of the stack.
+
+When a load operation occurs the value is placed into fp0, and the previous value is moved to fp1, and so on down the line. Similarily when a store operation occurs, the value in fp0 is stored into memory, and all values move up one slot. eg fp1 becomes fp0, fp2 becomes fp1, and so on.
+
+For floating point operations the target and one of the operands MUST be the SAME FPU register, with the other operand also being another FPU register. fp0 MUST also be one of the registers utilised. eg
+
+fp0 = fp0 * fp3;  // VALID
+fp0 = fp3 * fp0;  // VALID
+fp3 = fp0 / fp3;  // VALID
+fp3 = fp3 - fp0;  // VALID
+fp0 = fp0 * fp0;  // VALID
+fp1 = fp0 * fp3;  // INVALID - one of operands does NOT match
+                  // the destination register
+fp1 = fp1 + fp2;  // INVALID - fp0 not used
+Add, Subtract, Muliply, Divide and Modulus operations are permitted, however Modulus operations MUST be in the form of fp0 = fp0 % fp1;.
+
+The exception to this, is when you want to make fp0 equal to another FPU register. eg fp0 = fp3;. In this instance the value contain in fp3 is pushed onto the stack at location fp0, and what was fp3 is now fp4. To duplicate the value located in fp0, simply use fp0 = fp0;. This will duplicate the current top of stack, and push down all values one place on the stack.
+
+If however the target is another FPU register and the source is fp0, the two values are exchanged (or swapped). eg fp3 = fp0;, will swap the values in fp0 and fp3. The location of values on the stack DO NOT change in this instance. In summary:
+
+fp0 = fp3; // Push the value in fp3 onto the top of the stack.
+fp3 = fp0; // Exchange/Swap the values located in fp3 with the value in fp0.
+To rotate the FPU stack, you may use the fdecstp and fincstp keywords to decrement and increment the TOS (Top Of Stack) pointer of the FPU.
+
+Note: Don't blame me for this for the stack operation, blame Intel. For a good overview of FPU usage, please read the Intel Architecture manuals.
+
+Special Cases on mathematical/bitwise functions
+
+All multiplication, division and modulus operations are performed on source r0 for multiplication, and r3:r0 for division. (Source for division is 128bit value, NOT 64bit). Additionally the second operand MUST be a register (eg r0..r15).
+
+Shift and rotate operations can be performed on any register, however if the shift/rotate amount is to be stored in a register, it MUST be stored in r2/r2b. However note, that only the lower 8bits are used for the shift/rotate value. eg:
+
+r0 = r0 >> 1;
+r0 = r0 <<< r2; // only lower 8 bits is used.
+r0 = r0 >> r2b;
+NOT bitwise operations do not have a second operand and since the destination register MUST equal source register, bitwise NOT's are simply written as:
+
+!r0; // perform bitwise NOT on r0.
+The Negate operation do not have a second operand and since the destination register MUST equal source register, NEG are simply written as:
+
+-r0;  // perform NEG on r0.
+-fp0; // change sign on fp0.
+Note: Be careful when storing values within registers particular with r0 and r3 (rax, rdx), due to the way that some machine instructions operate, eg all * (multiple) operations store the result in r3:r0, and / (divide) and % (modulus) operates on r3:r0, etc.
+
+Note: only -fp0; is allowed, as the FPU is only capable of performing the neg operation on fp0.
+
+When using immediates as part of the operation, these are limited to unsigned 32bit numbers. Full 64bit arithmatic is limited to reg/reg operations only. (This is a limit of the AMD64 architecture).
+
+Technical Explanation of code output: Using the form: target = source {operator} source2; When the source and target registers are different, the source register is moved to the target register then the operation is performed, (except in the case of multiplication, division and modulus operations). eg
+
+r0 = r1 + r3;     // translates to mov r0, r1; add r0, r3;
+r0 = r15 >> r2b;  // translates to mov r0, r15; shr r0, r2b;
+Arrays and Pointers
+
+All arrays' shall be of type m8, m16, m32, m64, f32, f64 or f80 and can be accessed, either by direct reference or indirect reference:
+
+eg direct reference:
+
+    m8[100h] my_var;
+    r0 = my_var[34];
+    my_char = r0;
+or indirect reference:
+
+    m8[100h] my_var;
+    r0 = &my_var;   //make r0 = location of my_var.
+    r0 = r0 + 34;   //add 34 to that location.
+    r0 = [r0];      //get the data from the location. 
+    my_char = r0;   
+Multi-dimensional arrays are currently NOT supported.
+
+Indexes to arrays, must either be a single register or a single immediate value.
+
+eg. r0 = [r1];, r0 = [1]; , r0 = my_string[1]; or r0 = my_string[r1];
+
+When reading/writing from a predefined array, the value size will be equal to the defined size. eg byte, word, dword or qword. However when accessing the global address space (eg not a defined array), all read/writes are defined by the source/destination register size. Note: 8 and 16 bit loads are not zero extended, 32bit loads are zero extended. (This a precondition of the current AMD64 implementations).
+
+Pointers
+
+WARNING: EXTREME CARE IS REQUIRED WHEN USING POINTERS AS ANY PROBLEMS MAY LEAD TO INSECURE APPLICATIONS.
+
+When obtaining the address of a variable, be sure that the '&' is the first operand of instruction, to ensure that the code is not ambigous.
+
+It is possible to load a register with a direct pointer to a nth element within an array. In addition to using an immediate to define the element number, you may also use a register to indicate the element of the array which you need a pointer to.
+
+r0 = &my_array[1]; // set r0 to point to second element of the array
+r0 = &my_array[r2]; // set r0 to point to element indicated by r2 of the array
+Are both valid constructs, however note that when using a register to indicate the element number of an array, the register used as an index, and the destination register MUST be different.
+
+It is also possible to load a register with a pointer to a procedure, which is useful for setting callback pointers. eg.
+
+r0 = &main_rpc_callback(); // load r0 with pointer to 
+                           // procedure main_rpc_callback:
+To use a register as a pointer, encapsulate the register with a '[]' pair. eg:
+
+r0 = [r7];   // Load r0 with qword pointed to by r7
+[r10] = r2b; // Store the byte located in r2b, to the location
+             // as pointed to by r10.
+Both general and complex pointer operations are permitted. Simple operations are those with either a single register or immediate value defining the load/store location. Complex pointer operations can have a base, index (and scale) and displacement (or combination of) values within the pointer definition.
+
+Typical complex form is [{reg}+{reg}*{immediate}+{immediate}]. The first register is the base, the second the index and can be mulitplied by either 1, 2, 4 or 8 (the scale), with the last immediate to define the displacement. ([base + ( index * scale ) + displacement ]). eg
+
+r0 = [r1+0100h];     // Base and displacement
+r0 = [r1+r2];        // Base and index (no scale)
+r0 = [r1+r2*2];      // Base and index with scale
+r0 = [r1+r2*2+1];    // Base, index with scale and displacement
+r0 = [r2*2+1];       // index with scale and displacement
+As passed to the compiler, the above exact form MUST be used, otherwise an error will be generated. r0 = [1+r0]; is considered incorrect, as the order of operands are in the incorrect order.
+
+Note: Displacements are limited to signed 32bit values. However the value must be encoded as a positive. eg -1 should be entered as 0ffffffffh. The 32bit value will be sign extended when put to use.
+
+Note: If only a displacement is given in the pointer, eg r0w = [0];, the displacement is calculated from the current instruction (RIP) and NOT considered an absolute address. (This is when RIP based addressing is used). If a register is used, then the address is considered an absolute address and the displacement is taken from the address in the register. (So if you want an absolute address, you MUST use a register).
+
+Note: Pointer use of this nature is directly supported by the cpu, and actually corresponds 1:1 to the x86 machine language.
+
+Global pointer operations with FPU registers as either source or destination are treated as f80 load/stores ONLY. Additionally the source OR target MUST be fp0. The addressing scheme must also use integer registers, as depicted above. eg: fp0 = [r0+r1*2+10h];
+
+Note: If producing ELF Object code (eg using command line option -felfo), due to displacements being limited to 32bits, you MUST exclusively use register based pointers to access GLOBAL variables. (This is a limitation of the AMD64 architecture, however is only required if producing code that will be used in shared objects). eg
+
+m16 my_var;
+
+proc main() {
+    r0 = my_var;       // INCORRECT
+
+    r0 = &my_var;
+    r0w = [r0];        // CORRECT
+}
+B0 will compile the code to asm form, however FASM will reject the resultant code.
+
+Technical Explanation: Within the AMD64 architecture, all displacements are limited to 32bits. The first line of code (r0 = my_var;) will produce movzx rax, word [my_var];. For executable code this is fine, as the displacement is taken from the current instruction (RIP) in the form of a signed 32bit displacement, which can be calculated during assembly. (It'll work fine as long as the variable is within ±2GB of the current instruction). The problem with object code, is that ALL displacements, unless known should be encoded as 64bits. (So the linker can insert the current offset into the code, during linking). However you can't fit 64bits (what the linker needs) into a 32bit hole (what the processor allows). Because of the size difference issue, the latter form MUST be used.
+
+This only affects GLOBAL variables, as LOCAL variables are part of a thread heap, addressed by r6. So using the above code, but changing the variable to become a local variable, eg
+
+proc main(){
+    m16 my_var;
+        
+    r0 = my_var;  
+}
+Will produce: movzx rax, word [r6+_B0_main_my_var]; which the memory address is considered absolute!
+
+The compiler will also allow loading immediate values into memory using a pointer, however this is limited to m32 immediates only. (Restriction due to the way a pointer operation is encoded when using immediates). eg [r15+r14*8] = -1; will load -1 (encoded as a m32 integer) to the location pointed to by r15+r14*8.
+
+As an extension to pointer operations, it is also possible to load a register with a pointer based on the calculation of a complex pointer. That is, rather than loading the contents based on a complex pointer, load the actual pointer to the contents. This can be done simply by appending an & to the front of a complex pointer. eg r0 = &[r0+r0*4]; will load r0 with the calculation of the pointer. (This is basically what the LEA assembler mnemonic does). This can be useful in some circumstances for fast non-power 2 multiplication. (The above example is effectively multiply r0 by 5 without using the multiply instruction as an atomic instruction).
+
+Other Operators
+
+Stack Operators
+
+The push and pop keywords provide direct means at stack manpulation, where contents of register can be placed onto the stack or alternatively load a register with the contents on the top of the stack.
+
+The push keyword places the contents of the register nominated onto the stack, and decrements the stack pointer (eg. r7). Additional registers can also be pushed onto the stack, simply by including them, separating by commas.
+
+push r0, r1, r2, r3;  //Push r0, r1, r2 and r3 onto the stack
+The pop keywords loads the register with the contents of the top of the stack, and then increments the stack pointer. (eg r7). Additional registers can also be loaded in sequence by adding them, separated by commas.
+
+pop r3, r2, r1, r0; // Pop r3, r2, r1 and r0 from the stack
+I/O Port operators
+
+b0 besides offering a general application programming environment, it also offers direct I/O port operators in, out so that the application can directly interface the underlying hardware.
+
+in and out either load or output register r0 to/from a port pointed to by r3. The general form must be:
+
+in({port}, {value});  // Where port is r3, and value is r0
+out({port}, {value}); 
+
+eg.
+in(r3, r0b);    //load r0b with a byte from port r3
+out(r3, r0w);   //send r0w with a word to port r3 (lower 8 bits)
+                // and r3+1 (upper 8 bits)
+Any size can be loaded, however please note that inline with general convention of x86-64 assembler, a 8bit in/out will affect the port specified, however a 16bit in/out will effect the port specified (lower 8 bits) and the next adjucent port (upper 8 bits). Similar for 32bit in/out operations. Note: 64bit operations (that is 8 sequential ports cannot be accessed at once) are not valid. eg in(r3, r0); is invalid.
+
+Operation System direct calls
+
+The syscall and sysret keywords can be used to call the underlying operating system. syscall is used by an application to call the operating system through the defined interface. sysret should only be used by operating system kernel code, to return to the calling application.
+
+Note: When calling the Operating System, it is up to the programmer to ensure the registers and stack (including stack frame if applicable) are setup correctly before calling the operating system. The calling conventions can be found in either in Linux, Microsoft or other vendor documentation. WARNING: Using the syscall keyword results in non-portable code, therefore an abstraction layer should be used to provide OS-neutral services or alternative make use of either libc or the Win32 API.
+
+Inline Assembler
+
+To embed inline assembler into the source code, simple use the asm keyword followed by a '{' symbol, and to terminate the block use a '}' symbol. eg:
+
+asm {
+    xor rax, rax ; make rax = 0
+}
+The inline assembler is passed directly through, WITHOUT modification. Additionally, no special preamble or prologue is inserted into the code stream.
+
+It is possible to define labels within the assembler block, however some care should be taken. All labels MUST be proceeded with a '.' (full-stop) and end in a ':' (colon). When performing jumps (jmp, jcc), append the function name (prefixed with "_B0_") to the label defined within the assembler block. eg
+
+proc main() {
+    asm {
+        jmp _B0_main.label  // Skip the next instruction
+        mov r0, r1
+        .label:
+        }
+    }
+    exit(0);
+}
+When using inline assembler, all rules as defined by within the FASM manual are to be adhered to. However since all inline assembler statements are passed through without modification, it is possible to make use of the macros capabilities of FASM. See the FASM Manual for a descrption of those capabilities.
+
+Accessing Variables
+
+To access global variables within inline assembler, simply access by name, with the prefix "_B0_". To access local variables, does however require some additional consideration.
+
+Local variables are addressed using r6 (or rbp) as the base, and you must append the function name to the local variable joined by an underscore '_', in addition to adding the prefix "_B0_". eg
+
+m32 entry_count = 0;
+proc test_local() {
+    m64 my_local;
+    asm {
+        mov rax, [r6+_B0_test_local_my_local]  // Access local variable.
+        mov rbx, _B0_test_local                // Load rbx with pointer to current proc.
+        mov ecx, [_B0_entry_count]             // Access Global variable.
+        call _B0_Exception2                    // Call procedure called "Exception2"
+    }
+}
+Special Considerations
+
+If you modify rbp or r6 during any inline assembler block, please be sure to reset it back to what it was set, just before terminating the inline assembler. This can be achieved easily through the using either the push/pop keyword, or the push/pop assembler mnemonic.
+
+Also take care with r7 or rsp, in regards to stack operations.
+
+Include library files
+
+The lib keyword can be used to include other source code or variable declarations to be used in conjunction with the current application. eg lib 'stdlib_linux.b0'; will include the file "stdlib_linux.b0" into the source code. When searching for the file, the following order is used:
+
+Current directory
+Paths located as part of the -i command line option
+Paths located in the environment variable B0_INCLUDE
+Preprocessor and Conditional Compilation
+
+B0 contains a fairly simple preprocessor and is capable of basic definitions and the ability to allow conditional compilation, that is based on a whether a symbol extists or not produce a block of code.
+
+All preprocessor operations are prefixed with a hash '#', and the following operations are available:
+
+define: Define a symbol, and optionally specify a numerical value to it.
+ifdef: See if a symbol exists, and if so continue process the following code block.
+ifndef: See if a symbol doesn't exist, and if so continue to process the following code block.
+else: Reverse the state of code generation.
+endif: Finalise the ifdef or ifndef blocks.
+COMPILER_OPTION: Pass either the UTF8/UTF16 flag or object format type.
+The following is a quick example of the usage of preprocessor commands, including conditional compilation.
+
+#define DEBUG;
+#define TRUE = 1;
+#define FALSE = 0;
+
+#ifdef DEBUG;
+    echo('I\'m in DEBUG mode\n');
+    #define PRODUCTION = FALSE;
+#else;
+    echo('I\'m in Production mode\n');
+    #define PRODUCTION = TRUE;
+#endif;
+The first line, defines a symbol called DEBUG. Next we see if DEBUG has been defined, and if so continue to process the block of code. In this case a simple call to the function called 'echo'. Next we encounter a else statement, which reverses the code generation state, (which means depending on the state of the ifdef, the next 2 lines will or will not be compiled. In this case they won't be. The final line ends the conditional compilation block. Also we set another symbol based on the state of the DEUBG symbol as well. (The symbol PRODUCTION).
+
+Basic definition usage
+
+The define keyword allows you to set a symbol to have a value associated, and have the symbol used within the source code to represent a constant. The symbol can also be defined without value, (in which case it would represent 0).
+
+#define DEBUG;
+#define PRODUCTION = -1;
+The first line, defines a symbol called DEBUG without a value, and the second line defines a symbol PRODUCTION to contain the value -1. (Both integer and floating point values are allowed).
+
+The primary usage for definitions is to allow for easy handling of constant values through out the source code.
+
+The preprocessor when encountering a symbol which has been defined, will replace the symbol with the numeric value it represents before any further processing occurs. If no value has been assigned to the symbol, the preparser assumes the value of 0 (zero). The preparser can also perform basic math of the symbols as well. eg
+
+#define VALUE1 = 1;
+#define VALUE2 = VALUE1 + 1;
+
+r0 = VALUE1 + VALUE2;
+The first line, sets the value of VALUE1 to 1. The next line takes the value located in VALUE1 adds 1 to it, and sets VALUE2 to this value. (in this case 2). The last line, gets transformed by the preprocessor to be: r0 = 1 + 2;, but will then refactor that to r0 = 3; before processing the code further. However the preprocessor is only capable of addition, subtraction, mulitplication and division.
+
+Note: The preprocessor will only refactor numerical values, that are adjacent to the symbols. eg, r0 = VALUE1 + r0 + VALUE2; will only be refactored to r0 = 1 + r0 + 2;. This is obvisously incorrect syntax, to correct this the original line should be changed to r0 = r0 + VALUE1 + VALUE2; which will refactor to r0 = r0 + 3;. Similarily for refectoring to occur, the first symbol must be a define. eg. r0 = 1 + VALUE1;, will refactor to r0 = 1 + 1;, and not r0 = 2;. If you mix symbols that have both integer and floating point values, the resultant value will be floating point.
+
+The general rules are:
+
+Group all defines and immediates together.
+Ensure that defined symbols are the first in the chain.
+Math operators are strictly left to right operation. (Conventional order rules are not followed. This simplified the implementation considerably - however may change in the future). The following math operators may be used: + , -, *, / and when dealing strictly with integer values << and >> are also allowed.
+The undefine keywords lets you undefine a symbol. eg
+
+#define PRODUCTION = 0;
+
+#ifdef PRODUCTION != 1;
+#undefine PRODUCTION;
+#endif;
+The above code, will undefine the symbol PRODUCTION based on it's preassigned value. The undefine keyword also allows you to redefine the value of a symbol. (First undefine the symbol, and then redefine it again).
+
+Conditional Compilation
+
+The ifdef and ifndef both test if a symbols exists or doesn't exist respectively. However the symbol can be any other label, including variables, functions, or even keywords. eg #ifndef fp0; will see if the keyword fp0 exists, and if not, will the compiler the code that follows, until either an #else or #endif are found.
+
+ifdef can also be extended to test for the value of the define (however this is limited to symbols that have been defined with value, and doesn't include variables, functions, etc). eg.
+
+#define DEBUG = 1;
+
+#ifdef DEBUG == 1;
+    #define TEST = 1;
+    echo('DEBUG = 1\n');
+#else;
+    #define TEST = 0;
+    echo('DEBUG hasn\'t been defined or DEBUG != 1\n');
+#endif;
+This will set the symbol TEST to contain a value as defined by the value held in DEBUG and also the code as needed. All the comparison operators are able to be utilised, when comparing the state of the symbol. eg ==, !=, <, >, <=, >=, and signed variants.
+
+ifdef and ifndef blocks can be nested up to 32 levels deep, allowing for rather complex conditional compilation setups.
+
+Compiler Options
+
+The COMPILER_OPTION command allows you to either set certain compiler options without having to use command line arguments. The options are:
+
+UTF8: Set the compiler to output UTF8 strings.
+UTF16: Set the compiler to output UTF16 strings.
+ELF: Set the compiler to output ELF Executable files.
+ELFO: Set the compiler to output ELF Object files.
+PE: Set the compiler to output PE Executable files.
+DLL '<DLL name>': Set the compiler to output Windows DLL files. The DLL name MUST follow this directive. (This directive is only available with v0.0.20+)
+RSRC '<RES file name>': Use the following pre-compiled resource file with this application/library. The filename of the resource file MUST follow this directive. (This directive is only available with v0.0.20+)
+ENABLESTACKFRAME: Set the compiler to generate a local heap frame when calling a procedure.
+DISABLESTACKFRAME: Set the compiler to NOT generate a local heap frame when calling a procedure.
+The COMPILER_OPTION command with the output format defined MUST be used before any defined variables or code has been processed, and also noting that command line arguments will override those used here. If defining either the DLL filename or pre-compiled resource file, only the last entry for the respective options is honoured. (Only a single resource file can be imported at this time). However you may switch between UTF8 and UTF16 encodings on the fly. A typical example is as follows:
+
+#COMPILER_OPTION ELF UTF8;  //Set to output ELF Executable and use UTF8 strings
+
+m8 UTF8_String1 = 'Encoded as UTF8\n';
+
+#COMPILER_OPTION UTF16;  //Set to use UTF16 strings;
+
+m16 UTF16_String1 = 'Encoded as UTF16\n';
+If passing multiple options (like the example above), then just separate each option by spaces. COMPILER_OPTION can appear multiple times through out the source code file, however only the first instance is adhered to with regards to output formats. Warnings will be issued, if multiple instances do appear and attempt to modify a setting, which has been previously set (either by a command line switch or via another COMPILER_OPTION definition. String formats since they can be changed on the fly won't generate warnings, will adhere the last definition. Just be careful, as this will effect dynamic strings (eg those used in calls to other functions) as well. eg echo(&'Echo string');
+
+This command does obey conditional compilation directives (as described above), so you can use ifdef and endif to set compiler options based on other definitions. eg:
+
+#ifdef LINUX;
+	#COMPILER_OPTION ELF UTF8;
+	#define _UTF8 = 1;
+#endif;
+#ifdef WINDOWS;
+	#COMPILER_OPTION PE RSRC 'resc.res' UTF16;
+	#define _UTF8 = 0;
+#endif;
+#ifdef WINDOWS_DLL;
+	#COMPILER_OPTION DLL 'MyDLL.DLL' RSRC 'myIcons.res' UTF16;
+	#define _UTF8 = 0;
+#endif;
+Another compiler option exists which enables or disables the creation of the local heap frame when calling procedures. This can be used if you decide to pass variables to the called procedure via registers and the called procedure doesn't use local variables, so that the compiler doesn't generate the applicable code, thereby saving space and improving application performance. ENABLESTACKFRAME and DISABLESTACKFRAME enable and disable the creation of the local heap frame respectively.
+
+Note: If you wish to pass parameters when a frame hasn't been created only a compiler warning will be generated, processing will continue.
+
+Note: B0 doesn't (and most likely never) include a dedicated resource editor for Windows, hence the requirement for an external resource editor and resource compiler, (to generate the *.res files). Since there are a few really good editors and compilers, why not leverage those tools?
+
+For the windows version of B0, I use ResEd to create the basic *.rc file, and then use GoRC to compile that *.rc file into a *.res file, which then gets included with the application using the #COMPILER_OPTION RSRC 'b0.res' compiler option.
+
+Standard Library Functions
+
+Note: The STDLIB is now obsolete, and NO longer actively maintained.
+
+Standard Library Functions
+
+Implementation Notes
+
+Unlike a quite a few other language implementations, local variables are NOT stored on the stack. Instead a separate 'local thread heap' is utilised, to separate the local variables from the stack.
+
+Sidenote: most buffer overflow exploits work on the fact that an external process can access, by overflowing an array buffer located the stack, and therefore being able to overwrite the return address of a function. By separating the local variables from the stack by at least a physical page, should make it more difficult (but not impossible) to have a buffer overflow event that is possible to exploit the system. Buffer-underflows may still exist, however these will only result by poor pointer handling, and may only lead to trashed data, (eg resulting at worst in Denial-Of-Service).
+
+The base of the local variable heap is located in r6 (rbp). Please be sure that if you need to use r6, that you save and restore before calling another function, (as is the case of the local stack frame in other languages).
+
+Using r0..r3, for temporary storage also be used with caution, as many of the functions use these for instruction processing. However know what these contain can also let you speed up your code.
+
+If you start receiving unknown character errors when saving your source files to UTF8, ensure that a BOM is NOT included in the saved file. (eg Windows Notepad includes a BOM). Update: This bug has been fixed in v0.0.6.
+
+IF-THEN-ELSE Implementation is rather open ended. The following code sample will compile correctly, (and produce correct code).
+
+proc main() {
+    r0 = 100h;
+    r1 = 200h;
+    if (r0 < r2){
+        echo('r0 is less than r2\n');
+    } else {
+        echo('r2 is less than r0\n');
+    } else {
+        echo('2nd Else?\n');
+    };
+};
+Will output the following when run:
+
+r0 is less than r2
+2nd Else?
+The current implemented ELSE keyword, simple inserts a jmp statement to skip the next code block, followed by the current end of block label. It currently does not check to see if a previous ELSE at the same level has occured. While it would be poor form to use this type of code, it can be used to confuse the crap out of a newbie. As some say "It's not a bug, it's a feature!"
+
+Future plans include adding:
+
+Support for SIMD Operations.*
+Macro support.
+Basic IDE for *nix and Windows (a LONG way off).
+* These options are already available via the asm keyword.
